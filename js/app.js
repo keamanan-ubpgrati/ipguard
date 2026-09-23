@@ -1047,6 +1047,7 @@ function renderIncidentBulananChart(perBulan, bulanIniIdx) {
 // ════════════════════════════════════════════════════════
 function renderGenericTable(containerId, columns, rows, actionsFn) {
   const el = document.getElementById(containerId);
+  if (!el) return; // halaman sudah berganti sebelum data datang (mis. pindah menu saat menyimpan)
   if (!rows || rows.length === 0) {
     el.innerHTML = `<div class="text-center text-muted py-5"><i class="bi bi-inbox fs-2"></i><p class="mt-2">Belum ada data.</p></div>`;
     return;
@@ -1728,11 +1729,21 @@ function renderLogPatroliTable() {
     .sort((a,b)=> new Date(b.WaktuInput)-new Date(a.WaktuInput));
   renderGenericTable('tblLogPatroli',
     [ {label:'Jam Scan', key:'JamScan'}, {label:'Putaran', render:r=>`#${r.Putaran}`}, {label:'Shift', key:'Shift'}, {label:'Regu', key:'Regu'},
-      {label:'Titik Patroli', key:'TitikPatroli'}, {label:'Kode QR', key:'KodeQR'},
+      {label:'Titik Patroli', key:'TitikPatroli'}, {label:'Metode', render:r=>patroliMetodePill(r.Metode)},
       {label:'Jarak', render:r=> r.JarakMeter!=='' && r.JarakMeter!==undefined ? `${r.JarakMeter} m` : '-'},
-      {label:'Status', render:r=> r.StatusVerifikasi==='On Site' ? '<span class="pill pill-success">On Site</span>' : '<span class="pill pill-danger">Off Site</span>'} ],
+      {label:'Status', render:r=> patroliStatusPill(r.StatusVerifikasi)} ],
     rows
   );
+}
+/** Status log patroli: On Site / On Site (QR) = hijau, Perlu Cek = kuning, Off Site = merah */
+function patroliStatusPill(status) {
+  const cls = { 'On Site': 'pill-success', 'On Site (QR)': 'pill-success', 'Perlu Cek': 'pill-warning' }[status] || 'pill-danger';
+  return `<span class="pill ${cls}">${status || 'Off Site'}</span>`;
+}
+/** Log lama (sebelum ada mode QR) tidak punya kolom Metode — semuanya GPS */
+function patroliMetodePill(metode) {
+  return metode === 'QR' ? '<span class="pill pill-info"><i class="bi bi-qr-code"></i> QR</span>'
+                         : '<span class="pill pill-neutral"><i class="bi bi-geo-alt"></i> GPS</span>';
 }
 function onLogPatroliTanggalChange() {
   logPatroliTanggal = val('logPatroliTanggalInput');
@@ -1747,10 +1758,19 @@ function rekapPatroliActions(row) {
   return btns || '-';
 }
 
-// ── Log Titik Patroli (scan QR + GPS, jam otomatis, putaran manual) ──
+// ── Log Titik Patroli — 2 mode: Scan QR (kamera) atau GPS, dipilih bebas petugas tiap scan ──
+// Titik pada mode QR ditentukan SERVER dari isi QR; GPS di mode QR hanya bukti tambahan (tidak wajib).
+const QR_TITIK_PREFIX = 'IPGUARD:TP:';
+const JSQR_URL = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+let patroliMode = 'QR';
+let patroliTitikList = [];
+let lastGPS = null;
+let lastQrText = null;
+
 function openLogPatroliForm() {
+  try { patroliMode = localStorage.getItem('ipg_patroli_mode') === 'GPS' ? 'GPS' : 'QR'; } catch (e) { patroliMode = 'QR'; }
   openFormModal('Scan Titik Patroli', `
-    <p class="section-sub mb-2"><i class="bi bi-info-circle"></i> Jam tercatat otomatis sesuai waktu saat tombol "Verifikasi & Simpan" diklik. Toleransi GPS ${'\u00b1'}10 meter untuk status On Site.</p>
+    <p class="section-sub mb-2"><i class="bi bi-info-circle"></i> Jam tercatat otomatis saat tombol "Verifikasi & Simpan" diklik.</p>
     <form onsubmit="return submitLogPatroliForm(event)">
       <div class="row g-2">
         <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="ptTanggal" required value="${new Date().toISOString().slice(0,10)}"></div>
@@ -1759,43 +1779,232 @@ function openLogPatroliForm() {
         <div class="col-6"><label class="form-label">Putaran</label><select class="form-select" id="ptPutaran" required>
           <option value="1">Putaran 1</option><option value="2">Putaran 2</option><option value="3">Putaran 3</option><option value="4">Putaran 4</option>
         </select></div>
-        <div class="col-12"><label class="form-label">Titik Patroli</label><select class="form-select" id="ptTitik" required><option>Memuat...</option></select></div>
-        <div class="col-12"><button type="button" class="btn btn-outline-ip w-100" onclick="ambilGPS()"><i class="bi bi-geo-alt"></i> Ambil Lokasi GPS Saat Ini</button></div>
-        <div class="col-12"><div id="gpsResult" class="small text-muted"></div></div>
+        <div class="col-12"><label class="form-label">Metode verifikasi</label>
+          <div class="segmented-toggle d-flex w-100" role="group">
+            <button type="button" class="seg-btn flex-fill" id="ptModeQR" onclick="setPatroliMode('QR')"><i class="bi bi-qr-code-scan"></i> Scan QR</button>
+            <button type="button" class="seg-btn flex-fill" id="ptModeGPS" onclick="setPatroliMode('GPS')"><i class="bi bi-geo-alt"></i> GPS</button>
+          </div>
+        </div>
+
+        <div class="col-12" id="ptPanelQR">
+          <button type="button" class="btn btn-outline-ip w-100" id="qrOpenBtn" onclick="startQrScan()"><i class="bi bi-camera"></i> Buka Kamera &amp; Scan QR</button>
+          <div id="qrScanArea" style="display:none;" class="mt-2">
+            <div style="position:relative;border-radius:var(--radius-md);overflow:hidden;background:#000;">
+              <video id="qrVideo" playsinline muted style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block;"></video>
+              <div style="position:absolute;inset:18%;border:3px solid var(--pln-yellow);border-radius:14px;pointer-events:none;"></div>
+            </div>
+            <div class="small text-muted mt-1" id="qrScanStatus">Menyalakan kamera...</div>
+            <button type="button" class="btn btn-outline-ip btn-sm-ip w-100 mt-1" onclick="stopQrScan()">Tutup Kamera</button>
+          </div>
+          <div id="qrResult" class="mt-2"></div>
+          <div id="gpsResultQR" class="small text-muted mt-1"></div>
+        </div>
+
+        <div class="col-12" id="ptPanelGPS" style="display:none;">
+          <label class="form-label">Titik Patroli</label>
+          <select class="form-select mb-2" id="ptTitik"><option>Memuat...</option></select>
+          <button type="button" class="btn btn-outline-ip w-100" onclick="ambilGPS('gpsResult')"><i class="bi bi-geo-alt"></i> Ambil Lokasi GPS Saat Ini</button>
+          <div id="gpsResult" class="small text-muted mt-1"></div>
+          <div class="small text-muted mt-1">Toleransi GPS ±10 meter untuk status On Site.</div>
+        </div>
       </div>
-      <button type="submit" class="btn btn-primary-ip w-100 mt-3"><i class="bi bi-check2-circle"></i> Verifikasi & Simpan Titik</button>
+      <button type="submit" class="btn btn-primary-ip w-100 mt-3"><i class="bi bi-check2-circle"></i> Verifikasi &amp; Simpan Titik</button>
     </form>`);
-  lastGPS = null;
+  lastGPS = null; lastQrText = null;
   google.script.run.withSuccessHandler(res => {
-    const titik = res.data || [];
+    patroliTitikList = res.data || [];
     const sel = document.getElementById('ptTitik');
-    if (titik.length === 0) { sel.innerHTML = `<option value="">Belum ada Titik Patroli terdaftar</option>`; return; }
-    sel.innerHTML = titik.map(t => `<option value="${t.NamaTitik}" data-qr="${t.KodeQR||''}">${t.NamaTitik}</option>`).join('');
+    if (!sel) return;
+    sel.innerHTML = patroliTitikList.length
+      ? patroliTitikList.map(t => `<option value="${t.NamaTitik}">${t.NamaTitik}</option>`).join('')
+      : `<option value="">Belum ada Titik Patroli terdaftar</option>`;
   }).getAllData('MASTER_TITIK_PATROLI');
+  setPatroliMode(patroliMode);
 }
-let lastGPS = null;
-function ambilGPS() {
-  const el = document.getElementById('gpsResult');
-  el.textContent = 'Mengambil lokasi...';
-  if (!navigator.geolocation) { el.textContent = 'Geolocation tidak didukung perangkat ini.'; return; }
+
+function setPatroliMode(mode) {
+  patroliMode = mode === 'GPS' ? 'GPS' : 'QR';
+  try { localStorage.setItem('ipg_patroli_mode', patroliMode); } catch (e) {}
+  document.getElementById('ptModeQR').classList.toggle('active', patroliMode === 'QR');
+  document.getElementById('ptModeGPS').classList.toggle('active', patroliMode === 'GPS');
+  document.getElementById('ptPanelQR').style.display = patroliMode === 'QR' ? '' : 'none';
+  document.getElementById('ptPanelGPS').style.display = patroliMode === 'GPS' ? '' : 'none';
+  if (patroliMode === 'QR') {
+    if (!lastGPS) ambilGPS('gpsResultQR', true); // bukti tambahan, diam-diam, tidak menghambat
+  } else {
+    stopQrScan();
+  }
+}
+
+function ambilGPS(elId, silent) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (!navigator.geolocation) { el.textContent = silent ? '' : 'GPS tidak didukung perangkat ini.'; return; }
+  el.textContent = silent ? 'Mengambil lokasi sebagai bukti tambahan...' : 'Mengambil lokasi...';
   navigator.geolocation.getCurrentPosition(pos => {
     lastGPS = { lat: pos.coords.latitude, lng: pos.coords.longitude, akurasi: pos.coords.accuracy };
-    el.innerHTML = `<i class="bi bi-check-circle text-success"></i> Lat ${lastGPS.lat.toFixed(5)}, Lng ${lastGPS.lng.toFixed(5)} (akurasi ±${Math.round(lastGPS.akurasi)}m)`;
-  }, err => { el.textContent = 'Gagal ambil GPS: ' + err.message; });
+    const txt = `Lat ${lastGPS.lat.toFixed(5)}, Lng ${lastGPS.lng.toFixed(5)} (akurasi ±${Math.round(lastGPS.akurasi)}m)`;
+    const target = document.getElementById(elId);
+    if (target) target.innerHTML = `<i class="bi bi-check-circle text-success"></i> ${silent ? 'Lokasi tercatat: ' : ''}${txt}`;
+  }, err => {
+    const target = document.getElementById(elId);
+    if (!target) return;
+    target.textContent = silent ? 'Lokasi tidak tersedia — scan QR tetap bisa disimpan.' : 'Gagal ambil GPS: ' + err.message;
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
 }
+
+// ── Pemindai QR: BarcodeDetector bawaan Chrome Android, cadangan jsQR untuk browser lain ──
+const _loadedScripts = {};
+function loadScriptOnce(url) {
+  if (!_loadedScripts[url]) {
+    _loadedScripts[url] = new Promise((resolve, reject) => {
+      const sc = document.createElement('script');
+      sc.src = url; sc.onload = resolve;
+      sc.onerror = () => { delete _loadedScripts[url]; reject(new Error('Gagal memuat ' + url)); };
+      document.head.appendChild(sc);
+    });
+  }
+  return _loadedScripts[url];
+}
+
+const QrScanner = {
+  stream: null, timer: null, detector: null, canvas: null, busy: false,
+  async start(video, onText, onStatus) {
+    this.stop();
+    if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('Kamera hanya bisa dipakai dari alamat https (versi GitHub Pages / Vercel / APK).');
+    }
+    this.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+    video.srcObject = this.stream;
+    await video.play();
+    if ('BarcodeDetector' in window) {
+      try {
+        const formats = await BarcodeDetector.getSupportedFormats();
+        if (formats.includes('qr_code')) this.detector = new BarcodeDetector({ formats: ['qr_code'] });
+      } catch (e) { this.detector = null; }
+    }
+    if (!this.detector) {
+      onStatus('Menyiapkan pemindai...');
+      await loadScriptOnce(JSQR_URL);
+      if (typeof jsQR !== 'function') throw new Error('Pemindai QR gagal dimuat. Periksa koneksi internet.');
+      this.canvas = document.createElement('canvas');
+    }
+    onStatus('Arahkan kamera ke stiker QR titik patroli, tahan sampai terbaca.');
+    const tick = async () => {
+      if (!this.stream) return;
+      if (!this.busy && video.readyState >= 2) {
+        this.busy = true;
+        try {
+          let text = null;
+          if (this.detector) {
+            const codes = await this.detector.detect(video);
+            if (codes.length) text = codes[0].rawValue;
+          } else {
+            const w = video.videoWidth, h = video.videoHeight;
+            if (w && h) {
+              const sc = Math.min(1, 640 / Math.max(w, h));
+              const cw = Math.round(w * sc), ch = Math.round(h * sc);
+              this.canvas.width = cw; this.canvas.height = ch;
+              const ctx = this.canvas.getContext('2d', { willReadFrequently: true });
+              ctx.drawImage(video, 0, 0, cw, ch);
+              const found = jsQR(ctx.getImageData(0, 0, cw, ch).data, cw, ch, { inversionAttempts: 'dontInvert' });
+              if (found) text = found.data;
+            }
+          }
+          if (text) { this.stop(); onText(text); return; }
+        } catch (e) { /* frame gagal dibaca — lanjut frame berikutnya */ }
+        finally { this.busy = false; }
+      }
+      this.timer = setTimeout(tick, 180);
+    };
+    tick();
+  },
+  stop() {
+    clearTimeout(this.timer); this.timer = null;
+    if (this.stream) { this.stream.getTracks().forEach(t => t.stop()); this.stream = null; }
+    this.detector = null; this.busy = false;
+  }
+};
+// Kamera selalu dimatikan saat form ditutup (tombol X, klik luar, atau setelah simpan)
+document.getElementById('formModal')?.addEventListener('hidden.bs.modal', () => QrScanner.stop());
+
+function qrCameraErrorMessage(e) {
+  const n = e && e.name;
+  if (n === 'NotAllowedError' || n === 'SecurityError')
+    return 'Izin kamera ditolak. Ketuk ikon gembok/pengaturan di sebelah alamat → Izin → Kamera → Izinkan, lalu coba lagi.';
+  if (n === 'NotFoundError' || n === 'OverconstrainedError') return 'Kamera tidak ditemukan di perangkat ini. Gunakan mode GPS.';
+  if (n === 'NotReadableError') return 'Kamera sedang dipakai aplikasi lain. Tutup aplikasi kamera, lalu coba lagi.';
+  return (e && e.message) || 'Kamera tidak dapat dibuka.';
+}
+
+async function startQrScan() {
+  const area = document.getElementById('qrScanArea');
+  const status = document.getElementById('qrScanStatus');
+  document.getElementById('qrResult').innerHTML = '';
+  document.getElementById('qrOpenBtn').style.display = 'none';
+  area.style.display = '';
+  lastQrText = null;
+  try {
+    await QrScanner.start(document.getElementById('qrVideo'), onQrScanned, msg => { status.textContent = msg; });
+  } catch (e) {
+    QrScanner.stop();
+    area.style.display = 'none';
+    document.getElementById('qrOpenBtn').style.display = '';
+    document.getElementById('qrResult').innerHTML = `<div class="alert alert-danger small mb-0">${qrCameraErrorMessage(e)}</div>`;
+  }
+}
+
+function stopQrScan() {
+  QrScanner.stop();
+  const area = document.getElementById('qrScanArea');
+  const btn = document.getElementById('qrOpenBtn');
+  if (area) area.style.display = 'none';
+  if (btn) btn.style.display = '';
+}
+
+function onQrScanned(text) {
+  stopQrScan();
+  if (navigator.vibrate) navigator.vibrate(120);
+  let kode = String(text || '').trim();
+  if (kode.toUpperCase().indexOf(QR_TITIK_PREFIX) === 0) kode = kode.slice(QR_TITIK_PREFIX.length);
+  kode = kode.trim().toUpperCase();
+  const titik = patroliTitikList.find(t => String(t.KodeQR || '').trim().toUpperCase() === kode);
+  const btn = document.getElementById('qrOpenBtn');
+  if (!titik) {
+    lastQrText = null;
+    document.getElementById('qrResult').innerHTML =
+      `<div class="alert alert-danger small mb-0"><b>QR tidak dikenali.</b> Pastikan yang di-scan adalah stiker QR resmi titik patroli IP GUARD.</div>`;
+    if (btn) btn.innerHTML = '<i class="bi bi-camera"></i> Scan Ulang';
+    return;
+  }
+  lastQrText = String(text).trim();
+  document.getElementById('qrResult').innerHTML =
+    `<div class="alert alert-success small mb-0"><i class="bi bi-check-circle-fill"></i> Titik terdeteksi: <b>${titik.NamaTitik}</b>${titik.PosJaga ? ' — ' + titik.PosJaga : ''}</div>`;
+  if (btn) btn.innerHTML = '<i class="bi bi-camera"></i> Scan Ulang';
+}
+
 function submitLogPatroliForm(evt) {
   evt.preventDefault();
-  const titikSel = document.getElementById('ptTitik');
-  const titikPatroli = titikSel.value;
-  if (!titikPatroli) { showToast('Peringatan', 'Pilih Titik Patroli terlebih dahulu (daftarkan dulu di Master Data bila kosong).', 'danger'); return; }
-  if (!lastGPS) { showToast('Peringatan', 'Ambil lokasi GPS terlebih dahulu untuk verifikasi silang.', 'danger'); return; }
-  const kodeQR = titikSel.selectedOptions[0].dataset.qr || '';
-  const payload = {
+  const base = {
     tanggal: val('ptTanggal'), shift: val('ptShift'), regu: val('ptRegu'), putaran: val('ptPutaran'),
-    titikPatroli, kodeQR, lat: lastGPS.lat, lng: lastGPS.lng, akurasi: lastGPS.akurasi, createdBy: AppState.user.Nama
+    createdBy: AppState.user.Nama
   };
+  let payload;
+  if (patroliMode === 'QR') {
+    if (!lastQrText) { showToast('Peringatan', 'Scan stiker QR titik patroli terlebih dahulu.', 'danger'); return false; }
+    payload = Object.assign(base, {
+      metode: 'QR', qrText: lastQrText,
+      lat: lastGPS ? lastGPS.lat : '', lng: lastGPS ? lastGPS.lng : '', akurasi: lastGPS ? lastGPS.akurasi : ''
+    });
+  } else {
+    const titikPatroli = val('ptTitik');
+    if (!titikPatroli) { showToast('Peringatan', 'Pilih Titik Patroli terlebih dahulu (daftarkan dulu di Master Data bila kosong).', 'danger'); return false; }
+    if (!lastGPS) { showToast('Peringatan', 'Ambil lokasi GPS terlebih dahulu.', 'danger'); return false; }
+    payload = Object.assign(base, { metode: 'GPS', titikPatroli, lat: lastGPS.lat, lng: lastGPS.lng, akurasi: lastGPS.akurasi });
+  }
   closeFormModal();
-  callServer('submitLogPatroli', [payload], null, loadLogPatroliList, 'Memverifikasi titik & menghitung jarak GPS...');
+  callServer('submitLogPatroli', [payload], null, loadLogPatroliList,
+    patroliMode === 'QR' ? 'Memverifikasi QR titik...' : 'Memverifikasi titik & menghitung jarak GPS...');
   return false;
 }
 
@@ -1829,8 +2038,7 @@ function buildPatroliMatrixHtml(shift, titikMaster, logs) {
     const cells = checkpoints.map((cp, i) => {
       const entry = logs.find(l => l.TitikPatroli === t.NamaTitik && Number(l.Putaran) === i + 1);
       if (!entry) return `<td style="text-align:center;color:#E53935;">-</td>`;
-      const pillClass = entry.StatusVerifikasi === 'On Site' ? 'pill-success' : 'pill-danger';
-      return `<td style="text-align:center;"><span class="pill ${pillClass}">${entry.StatusVerifikasi}</span><div style="font-size:.68rem;color:var(--text-muted);">${entry.JamScan}</div></td>`;
+      return `<td style="text-align:center;">${patroliStatusPill(entry.StatusVerifikasi)}<div style="font-size:.68rem;color:var(--text-muted);">${entry.JamScan} (${entry.Metode === 'QR' ? 'QR' : 'GPS'})</div></td>`;
     });
     return `<tr><td>${t.NamaTitik}</td>${cells.join('')}</tr>`;
   }).join('');
@@ -1873,11 +2081,12 @@ function buildPatroliMatrixPrintHtml(shift, titikMaster, logs) {
     const cells = checkpoints.map((cp, i) => {
       const entry = logs.find(l => l.TitikPatroli === t.NamaTitik && Number(l.Putaran) === i + 1);
       if (!entry) return `<td style="${tdStyle}text-align:center;color:#E53935;font-weight:700;">-</td>`;
-      const isOn = entry.StatusVerifikasi === 'On Site';
-      const badgeStyle = `display:inline-block;padding:2px 9px;border-radius:10px;font-size:9.5px;font-weight:700;background:${isOn ? '#E3F9EC' : '#FDE8E8'};color:${isOn ? '#00913E' : '#E53935'};`;
+      const st = entry.StatusVerifikasi;
+      const [bg, fg] = (st === 'On Site' || st === 'On Site (QR)') ? ['#E3F9EC', '#00913E'] : st === 'Perlu Cek' ? ['#FFF6E0', '#A9760A'] : ['#FDE8E8', '#E53935'];
+      const badgeStyle = `display:inline-block;padding:2px 9px;border-radius:10px;font-size:9.5px;font-weight:700;background:${bg};color:${fg};`;
       return `<td style="${tdStyle}text-align:center;">
-        <span style="${badgeStyle}">${entry.StatusVerifikasi}</span>
-        <div style="font-size:9px;color:#888;margin-top:2px;">${entry.JamScan}</div>
+        <span style="${badgeStyle}">${st}</span>
+        <div style="font-size:9px;color:#888;margin-top:2px;">${entry.JamScan} (${entry.Metode === 'QR' ? 'QR' : 'GPS'})</div>
       </td>`;
     });
     return `<tr><td style="${tdStyle}">${t.NamaTitik}</td>${cells.join('')}</tr>`;
@@ -2520,8 +2729,11 @@ function generateApprovalQrTag_(docRef, label, name) {
   }
 }
 
-function openPrintDocument(bodyHtml) {
-  const w = window.open('', '_blank');
+function openPrintDocument(bodyHtml, existingWin) {
+  // existingWin: jendela yang sudah dibuka lebih dulu saat klik (hindari pop-up blocker pada proses yang menunggu server)
+  const w = existingWin || window.open('', '_blank');
+  if (!w) { showToast('Gagal', 'Pop-up diblokir browser. Izinkan pop-up untuk alamat ini, lalu coba lagi.', 'danger'); return; }
+  w.document.open();
   w.document.write(`
     <html><head><title>Cetak Dokumen — IP GUARD V3</title>
     <style>
@@ -3549,7 +3761,7 @@ function loadMasterData() {
         <li class="nav-item"><a class="nav-link" href="javascript:void(0)" onclick="loadMasterTab('MASTER_POS',this)">Pos Jaga</a></li>
         <li class="nav-item"><a class="nav-link" href="javascript:void(0)" onclick="loadMasterTab('MASTER_SARPRAS',this)">Sarpras</a></li>
         <li class="nav-item"><a class="nav-link" href="javascript:void(0)" onclick="loadMasterTab('MASTER_TITIK_PATROLI',this)">Titik Patroli</a></li>
-      </ul>` + actionBar('Tambah Entitas', 'openMasterForm') + `<div id="tblMaster"></div>`;
+      </ul>` + actionBar('Tambah Entitas', 'openMasterForm') + `<div id="mdExtraBar"></div><div id="tblMaster"></div>`;
   loadMasterTab('MASTER_PERSONEL', document.querySelector('#mdTabs .nav-link'));
 }
 // Skema per-kolom Master Data (hasil diskusi lanjutan) — mempermudah isian sesuai struktur sheet
@@ -3576,7 +3788,7 @@ const MASTER_SCHEMAS = {
   ],
   MASTER_TITIK_PATROLI: [
     { key: 'NamaTitik', label: 'Nama Titik', type: 'text', required: true },
-    { key: 'KodeQR', label: 'Kode QR', type: 'text', placeholder: 'misal: QR-PAT-01' },
+    { key: 'KodeQR', label: 'Kode QR', type: 'text', readonly: true, placeholder: 'Otomatis — dibuat saat Cetak Stiker QR' },
     { key: 'Latitude', label: 'Latitude', type: 'number', step: 'any' },
     { key: 'Longitude', label: 'Longitude', type: 'number', step: 'any' },
     { key: 'PosJaga', label: 'Pos Jaga', type: 'select', options: OPT_POS }
@@ -3589,12 +3801,20 @@ function loadMasterTab(sheetName, el) {
   currentMasterSheet = sheetName;
   document.querySelectorAll('#mdTabs .nav-link').forEach(l => l.classList.remove('active'));
   if (el) el.classList.add('active');
+  const extra = document.getElementById('mdExtraBar');
+  if (extra) extra.innerHTML = sheetName === 'MASTER_TITIK_PATROLI'
+    ? `<div class="card-ip mb-3 d-flex flex-wrap align-items-center gap-2" style="padding:.85rem 1rem;">
+         <div class="flex-grow-1 small"><b>Stiker QR titik patroli.</b> Kode QR dibuat otomatis untuk titik yang belum punya kode.
+           Titik yang sudah punya kode tidak berubah, jadi stiker terpasang tetap berlaku.</div>
+         <button class="btn btn-primary-ip btn-sm-ip" onclick="cetakStikerQrTitik()"><i class="bi bi-qr-code"></i> Cetak Stiker QR</button>
+       </div>` : '';
   google.script.run.withSuccessHandler(res => {
     const rows = res.data || [];
     currentMasterRows = rows;
     const cols = rows.length ? Object.keys(rows[0]).filter(k=>k!=='ID').map(k=>({label:k, key:k})) : [];
     renderGenericTable('tblMaster', cols, rows, row =>
       `<button class="btn btn-outline-ip btn-sm-ip" onclick="openMasterForm('${row.ID}')"><i class="bi bi-pencil"></i></button>
+       ${sheetName === 'MASTER_TITIK_PATROLI' ? `<button class="btn btn-outline-ip btn-sm-ip" title="Ganti kode QR (stiker hilang/rusak)" onclick="gantiKodeQrTitik('${row.ID}')"><i class="bi bi-arrow-repeat"></i></button>` : ''}
        <button class="btn btn-outline-ip btn-sm-ip" onclick="openConfirmModal('Hapus data ini?', ()=>callServer('deleteRecord',['${sheetName}','${row.ID}'],'Data dihapus.',()=>loadMasterTab('${sheetName}')))"><i class="bi bi-trash"></i></button>`
     );
   }).getAllData(sheetName);
@@ -3610,7 +3830,7 @@ function openMasterForm(editId) {
         <select class="form-select" id="${id}" ${f.required?'required':''}>${selectOptions(f.options, currentVal)}</select></div>`;
     }
     return `<div class="col-6"><label class="form-label">${f.label}</label>
-      <input type="${f.type}" ${f.step?`step="${f.step}"`:''} class="form-control" id="${id}" ${f.required?'required':''} placeholder="${f.placeholder||''}" value="${currentVal ?? ''}"></div>`;
+      <input type="${f.type}" ${f.step?`step="${f.step}"`:''} ${f.readonly?'readonly':''} class="form-control" id="${id}" ${f.required?'required':''} placeholder="${f.placeholder||''}" value="${currentVal ?? ''}"></div>`;
   }).join('');
   openFormModal(editRow ? 'Edit Entitas Master Data' : 'Tambah Entitas Master Data', `
     <form onsubmit="return submitMasterForm(event, ${editRow ? `'${editId}'` : 'null'})">
@@ -3632,6 +3852,76 @@ function submitMasterForm(evt, editId) {
     callServer('addRecord', [currentMasterSheet, payload], 'Master data tersimpan.', ()=>loadMasterTab(currentMasterSheet), 'Menyimpan...');
   }
   return false;
+}
+
+// ── Stiker QR Titik Patroli (Master Data → tab Titik Patroli) ──
+function _escHtml(t) {
+  return String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function buildStikerQrHtml(titikList, prefix) {
+  const items = titikList.filter(t => String(t.KodeQR || '').trim());
+  const cards = items.map(t => {
+    let img = '';
+    try {
+      const qr = qrcode(0, 'Q');
+      qr.addData(prefix + String(t.KodeQR).trim());
+      qr.make();
+      img = `<img src="${qr.createDataURL(8, 4)}" alt="" style="width:46mm;height:46mm;image-rendering:pixelated;display:block;margin:0 auto;">`;
+    } catch (e) {
+      img = '<div style="height:46mm;display:flex;align-items:center;justify-content:center;color:#E53935;">QR gagal dibuat</div>';
+    }
+    return `<div class="st">
+      <div class="st-hd">IP GUARD V3 &middot; Titik Patroli</div>
+      ${img}
+      <div class="st-nm">${_escHtml(t.NamaTitik)}</div>
+      <div class="st-pos">${_escHtml(t.PosJaga || '')}</div>
+      <div class="st-kd">${_escHtml(t.KodeQR)}</div>
+      <div class="st-ft">Scan lewat menu Patroli &rarr; Scan Titik Patroli &rarr; Scan QR</div>
+    </div>`;
+  }).join('');
+  return `<style>
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .st-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
+      .st { border: 1.5px dashed #8a9aa6; border-radius: 4mm; padding: 0 0 4mm; text-align: center; height: 80mm;
+            box-sizing: border-box; overflow: hidden; break-inside: avoid; page-break-inside: avoid; }
+      .st-hd { background: #023B4A; color: #F7E82E; font-weight: 700; font-size: 11px; letter-spacing: .02em;
+               padding: 2.2mm 0; margin-bottom: 3mm; border-bottom: 1.2mm solid #F7E82E; }
+      .st-nm { font-size: 16px; font-weight: 700; color: #012530; margin-top: 2.5mm; padding: 0 3mm; line-height: 1.15; }
+      .st-pos { font-size: 11px; color: #555; margin-top: 1mm; }
+      .st-kd { font-family: Consolas, monospace; font-size: 10px; color: #777; margin-top: 1mm; }
+      .st-ft { font-size: 8.5px; color: #999; margin-top: 1.5mm; }
+    </style>
+    <div class="print-only-tip">Cetak di kertas stiker atau HVS tebal, gunting di garis putus-putus, lalu <b>laminasi</b>.
+      Tempel setinggi dada di lokasi titik, terlindung dari hujan dan sinar matahari langsung.
+      Jumlah stiker: <b>${items.length}</b>.</div>
+    <div class="st-grid">${cards || '<p>Belum ada titik patroli.</p>'}</div>`;
+}
+
+function cetakStikerQrTitik() {
+  if (typeof qrcode === 'undefined') { showToast('Gagal', 'Pembuat QR belum termuat. Tunggu sebentar lalu coba lagi.', 'danger'); return; }
+  // Jendela dibuka SEKARANG (masih dalam klik pengguna) agar tidak diblokir pop-up blocker,
+  // lalu diisi setelah data dari server datang.
+  const w = window.open('', '_blank');
+  if (!w) { showToast('Gagal', 'Pop-up diblokir browser. Izinkan pop-up untuk alamat ini, lalu coba lagi.', 'danger'); return; }
+  w.document.write('<p style="font-family:sans-serif;padding:24px;">Menyiapkan stiker QR...</p>');
+  showSaving('Menyiapkan kode QR titik patroli...');
+  google.script.run
+    .withSuccessHandler(res => {
+      hideSaving();
+      if (!res.success) { w.close(); showToast('Gagal', res.message, 'danger'); return; }
+      openPrintDocument(buildStikerQrHtml(res.data.titik || [], res.data.prefix || 'IPGUARD:TP:'), w);
+      if (res.data.dibuat) showToast('Berhasil', res.message, 'success');
+      loadMasterTab('MASTER_TITIK_PATROLI', document.querySelectorAll('#mdTabs .nav-link')[3]);
+    })
+    .withFailureHandler(e => { hideSaving(); w.close(); showToast('Gagal', e.message, 'danger'); })
+    .generateKodeQrTitikPatroli();
+}
+
+function gantiKodeQrTitik(id) {
+  openConfirmModal('Ganti kode QR titik ini? Stiker lama di lokasi langsung tidak berlaku dan harus diganti dengan stiker baru.',
+    () => callServer('regenerateKodeQrTitik', [id], null,
+      () => loadMasterTab('MASTER_TITIK_PATROLI', document.querySelectorAll('#mdTabs .nav-link')[3]), 'Mengganti kode QR...'));
 }
 
 // ════════════════════════════════════════════════════════
