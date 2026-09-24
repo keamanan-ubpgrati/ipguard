@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "id.plnip.ubpgrati.ipguard",
+        "sha256_cert_fingerprints": ["70:D5:0A:3F:AA:C4:AB:3A:8B:65:0B:D9:05:91:BD:8D:D9:B4:41:4F:03:4D:49:30:FE:70:E2:57:2D:47:67:64"]
+      }
+    }]
