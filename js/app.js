@@ -725,6 +725,7 @@ function openFormModal(title, bodyHtml) {
   document.getElementById('formModalTitle').innerHTML = title;
   document.getElementById('formModalBody').innerHTML = bodyHtml;
   new bootstrap.Modal(document.getElementById('formModal')).show();
+  IPG_DINAS_FORMS.forEach(p => { if (document.getElementById(p + 'DinasInfo')) ipgUpdateDinas(p); });
 }
 function closeFormModal() {
   bootstrap.Modal.getInstance(document.getElementById('formModal'))?.hide();
@@ -1077,7 +1078,7 @@ function loadMutasiJaga() {
        <div class="card-ip mb-3">
          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
            <h6 class="mb-0"><i class="bi bi-journal-text"></i> Jurnal Pos Jaga <span class="badge-prd">tanpa approval</span></h6>
-           <input type="date" class="form-control form-control-sm" id="jurnalListTanggalInput" style="width:auto;" value="${jurnalListTanggal}" onchange="onJurnalListTanggalChange()">
+           <label class="small text-muted mb-0" for="jurnalListTanggalInput">Tanggal dinas</label><input type="date" class="form-control form-control-sm" id="jurnalListTanggalInput" style="width:auto;" title="Shift Malam tercatat pada tanggal mulai shift (mis. Malam 23/24 → pilih 23)" value="${jurnalListTanggal}" onchange="onJurnalListTanggalChange()">
          </div>
          <div id="tblJurnalPos"></div>
        </div>
@@ -1111,19 +1112,30 @@ function jamRangeFromSectionA(json) {
   } catch(e) { return '-'; }
 }
 
-// ── Tanggal & shift (jam WIB perangkat) — konsep TANGGAL DINAS, aturannya sama persis dengan server (getTanggalDinas_) ──
-// Satu shift = satu tanggal: tanggal saat shift DIMULAI. Shift Malam yang diisi 00.00–11.59 milik tanggal kemarin.
+// ── Tanggal & shift (jam WIB perangkat) — OPSI C (hasil diskusi lanjutan) ──
+// • Kolom "Tanggal"      = tanggal KALENDER asli (yang dilihat & diisi petugas, tercetak di dokumen).
+// • Kolom "TanggalDinas" = kunci pengikat satu shift utuh (tanggal saat shift dimulai), dihitung otomatis.
+//   Shift Malam 23→24 Sep: Putaran/Rolling 1 bertanggal 23, Putaran/Rolling 2–4 bertanggal 24, dinas keduanya 23.
+// • Aturan hitung dinas sama persis dengan server (resolveTanggalDinas_ di Kode.gs).
 // Catatan: dulu dipakai toISOString() yang berbasis UTC, sehingga pukul 00.00–06.59 WIB tanggalnya mundur 1 hari.
+const IPG_BULAN_PENDEK = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+const IPG_BULAN_PANJANG = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+const IPG_HARI = ['Minggu','Senin','Selasa','Rabu','Kamis',"Jum'at",'Sabtu'];
+const IPG_DINAS_FORMS = ['jp', 'mj', 'cs', 'pt', 'rp']; // Jurnal, BA Mutasi, Checklist, Patroli, Rekap
+
 function ipgYmd(d) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
-/** Tanggal kalender hari ini — untuk modul yang tidak terikat shift (tamu, kendaraan, barang keluar, dll.) */
+function ipgParseYmd(ymd) { const [y, m, d] = String(ymd).slice(0, 10).split('-').map(Number); return new Date(y, m - 1, d, 12); }
+function ipgAddDays(ymd, n) { const d = ipgParseYmd(ymd); d.setDate(d.getDate() + n); return ipgYmd(d); }
+/** Tanggal kalender hari ini (WIB perangkat) */
 function ipgToday() { return ipgYmd(new Date()); }
-/** Shift berjalan. graceMin: untuk dokumen akhir shift (BA, Rekap) — pukul 06.15 dengan tenggang 60 menit masih Malam */
+/** Shift berjalan. graceMin: dokumen akhir shift (BA, Rekap) — pukul 06.15 dengan tenggang 60 menit masih Malam */
 function ipgShiftNow(graceMin) {
   const h = new Date(Date.now() - (graceMin || 0) * 60000).getHours();
   return h >= 6 && h < 14 ? 'Pagi' : h >= 14 && h < 21 ? 'Sore' : 'Malam';
 }
+/** Tanggal dinas shift yang sedang berjalan (dipakai default daftar harian & laporan) */
 function ipgTanggalDinas(shift) {
   const d = new Date();
   if (shift === 'Malam' && d.getHours() < 12) d.setDate(d.getDate() - 1);
@@ -1137,12 +1149,92 @@ function ipgPutaranNow() {
   if (h >= 21) return 1;
   return Math.min(4, Math.floor(h / 2) + 2);
 }
-/** Saat Shift diganti, tanggal ikut menyesuaikan — kecuali tanggal sudah diubah manual oleh petugas */
-function ipgSyncTanggalDinas(shiftId, tanggalId) {
-  const t = document.getElementById(tanggalId);
-  if (!t || t.dataset.manual === '1') return;
-  t.value = ipgTanggalDinas(val(shiftId));
+/**
+ * Hitung tanggal dinas dari tanggal KALENDER + shift.
+ *  - Pagi/Sore: sama dengan tanggal kalender.
+ *  - Malam, diisi hari ini: sebelum 12.00 → malam yang dimulai kemarin; setelahnya → malam ini.
+ *  - Malam, susulan (tanggal ≠ hari ini): Putaran/Rolling 1 (22.00) → malam yang dimulai tanggal itu;
+ *    Putaran/Rolling 2–4 (setelah 00.00) & dokumen akhir shift (BA/Rekap/Checklist) → malam sebelumnya.
+ */
+function ipgHitungDinas(tanggal, shift, bagian) {
+  if (!tanggal) return '';
+  if (shift !== 'Malam') return tanggal;
+  const kemarin = ipgAddDays(tanggal, -1);
+  if (tanggal === ipgToday()) return new Date().getHours() < 12 ? kemarin : tanggal;
+  if (bagian) return Number(bagian) === 1 ? tanggal : kemarin;
+  return kemarin;
 }
+/** Tanggal dinas sebuah baris data; data lama (sebelum kolom TanggalDinas ada) memakai kolom Tanggal */
+function ipgDinasOf(r) { return String((r && (r.TanggalDinas || r.Tanggal)) || '').slice(0, 10); }
+function ipgTglPendek(ymd) {
+  if (!ymd) return '-';
+  const d = ipgParseYmd(ymd);
+  return isNaN(d) ? ymd : d.getDate() + ' ' + IPG_BULAN_PENDEK[d.getMonth()];
+}
+/** "Malam 23/24 Sep" · "Malam 30 Sep/1 Okt" · "Pagi 24 Sep" */
+function ipgLabelDinas(dinas, shift) {
+  if (!dinas) return '-';
+  if (shift !== 'Malam') return (shift ? shift + ' ' : '') + ipgTglPendek(dinas);
+  const a = ipgParseYmd(dinas), b = ipgParseYmd(ipgAddDays(dinas, 1));
+  const kiri = a.getMonth() === b.getMonth() ? String(a.getDate()) : a.getDate() + ' ' + IPG_BULAN_PENDEK[a.getMonth()];
+  return 'Malam ' + kiri + '/' + b.getDate() + ' ' + IPG_BULAN_PENDEK[b.getMonth()];
+}
+/** Untuk dokumen cetak: "Rabu–Kamis, 23–24 September 2026" (Malam) · "Kamis, 24 September 2026" */
+function ipgTanggalDinasPanjang(r) {
+  const dinas = ipgDinasOf(r);
+  if (!dinas) return '-';
+  const a = ipgParseYmd(dinas);
+  if (r.Shift !== 'Malam') return IPG_HARI[a.getDay()] + ', ' + a.getDate() + ' ' + IPG_BULAN_PANJANG[a.getMonth()] + ' ' + a.getFullYear();
+  const b = ipgParseYmd(ipgAddDays(dinas, 1));
+  const hari = IPG_HARI[a.getDay()] + '–' + IPG_HARI[b.getDay()];
+  if (a.getFullYear() !== b.getFullYear())
+    return `${hari}, ${a.getDate()} ${IPG_BULAN_PANJANG[a.getMonth()]} ${a.getFullYear()} – ${b.getDate()} ${IPG_BULAN_PANJANG[b.getMonth()]} ${b.getFullYear()}`;
+  if (a.getMonth() !== b.getMonth())
+    return `${hari}, ${a.getDate()} ${IPG_BULAN_PANJANG[a.getMonth()]} – ${b.getDate()} ${IPG_BULAN_PANJANG[b.getMonth()]} ${b.getFullYear()}`;
+  return `${hari}, ${a.getDate()}–${b.getDate()} ${IPG_BULAN_PANJANG[a.getMonth()]} ${a.getFullYear()}`;
+}
+
+// ── Keterangan dinas di 5 form (id: <prefix>DinasInfo). Untuk Malam bisa diklik untuk memilih malam lainnya. ──
+function _ipgBagian(pre) {
+  if (pre === 'jp') return val('jpRollingKe');
+  if (pre === 'pt') return val('ptPutaran');
+  return null; // BA / Checklist / Rekap: dokumen per shift
+}
+function ipgUpdateDinas(pre) {
+  const info = document.getElementById(pre + 'DinasInfo');
+  if (!info) return;
+  const tanggal = val(pre + 'Tanggal'), shift = val(pre + 'Shift');
+  const dinas = info.dataset.override || ipgHitungDinas(tanggal, shift, _ipgBagian(pre));
+  info.dataset.value = dinas;
+  if (!dinas) { info.innerHTML = ''; return; }
+  let html = `<span class="pill pill-info"><i class="bi bi-moon-stars"></i> Dinas ${ipgLabelDinas(dinas, shift)}</span>`;
+  if (shift === 'Malam') {
+    const lain = dinas === tanggal ? ipgAddDays(tanggal, -1) : tanggal;
+    html += ` <a href="javascript:void(0)" class="small-link ms-1" onclick="ipgToggleDinas('${pre}','${lain}')">Bukan? Pilih ${ipgLabelDinas(lain, 'Malam')}</a>`;
+  }
+  info.innerHTML = html;
+}
+function ipgToggleDinas(pre, dinas) {
+  const info = document.getElementById(pre + 'DinasInfo');
+  if (!info) return;
+  info.dataset.override = dinas;
+  ipgUpdateDinas(pre);
+  if (pre === 'mj') cariJurnalTerkait();       // Section A ikut mencari ulang malam yang dipilih
+  if (pre === 'rp') cariLogPatroliTerkait();    // matrix rekap ikut mencari ulang
+}
+function ipgGetDinas(pre) {
+  const info = document.getElementById(pre + 'DinasInfo');
+  return (info && info.dataset.value) || ipgHitungDinas(val(pre + 'Tanggal'), val(pre + 'Shift'), _ipgBagian(pre));
+}
+// Tanggal / Shift / Rolling / Putaran berubah → keterangan dinas dihitung ulang (pilihan manual direset).
+// Dipasang di fase capture supaya dinas sudah benar sebelum pencarian Section A / Rekap berjalan.
+document.addEventListener('change', e => {
+  const m = /^(jp|mj|cs|pt|rp)(Tanggal|Shift|RollingKe|Putaran)$/.exec(e.target && e.target.id || '');
+  if (!m) return;
+  const info = document.getElementById(m[1] + 'DinasInfo');
+  if (info) delete info.dataset.override;
+  ipgUpdateDinas(m[1]);
+}, true);
 
 // Pilihan baku — konsisten dipakai di Jurnal Pos & Mutasi Jaga (hasil diskusi lanjutan)
 const OPT_SHIFT = ['Pagi', 'Sore', 'Malam'];
@@ -1172,10 +1264,10 @@ function loadJurnalList() {
 }
 let jurnalListAllData = [];
 function renderJurnalListTable() {
-  const rows = jurnalListAllData.filter(r => (r.Tanggal||'').slice(0,10) === jurnalListTanggal)
+  const rows = jurnalListAllData.filter(r => ipgDinasOf(r) === jurnalListTanggal)
     .sort((a,b)=> new Date(b.WaktuInput)-new Date(a.WaktuInput));
   renderGenericTable('tblJurnalPos',
-    [ {label:'Tanggal', render:r=>(r.Tanggal||'').slice(0,10)}, {label:'Rolling ke', render:r=>`Rolling ${r.RollingKe}`}, {label:'Jam Rolling', key:'JamRolling'},
+    [ {label:'Tanggal', render:r=>ipgTglPendek(r.Tanggal)}, {label:'Dinas', render:r=>ipgLabelDinas(ipgDinasOf(r), r.Shift)}, {label:'Rolling ke', render:r=>`Rolling ${r.RollingKe}`}, {label:'Jam Rolling', key:'JamRolling'},
       {label:'Pos', key:'PosJaga'}, {label:'Shift', key:'Shift'}, {label:'Regu', key:'Regu'},
       {label:'Petugas', render:r=>`${r.PetugasLama} → ${r.PetugasBaru}`},
       {label:'Kondisi', render:r=> kondisiJurnalPill(r.Kondisi)},
@@ -1316,8 +1408,9 @@ function openJurnalForm() {
     <form onsubmit="return submitJurnalForm(event)">
       <p class="section-sub mb-2"><i class="bi bi-info-circle"></i> Jam shift resmi Satpam PLN IP UBP Grati: Pagi 06.00–14.00, Sore 14.00–21.00, Malam 21.00–06.00.</p>
       <div class="row g-2">
-        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="jpTanggal" required value="${ipgTanggalDinas(ipgShiftNow())}" oninput="this.dataset.manual='1'"></div>
-        <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="jpShift" required onchange="ipgSyncTanggalDinas('jpShift','jpTanggal')">${selectOptions(OPT_SHIFT, ipgShiftNow())}</select></div>
+        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="jpTanggal" required value="${ipgToday()}"></div>
+        <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="jpShift" required>${selectOptions(OPT_SHIFT, ipgShiftNow())}</select></div>
+        <div class="col-12"><div class="small" id="jpDinasInfo"></div></div>
         <div class="col-6"><label class="form-label">Rolling ke</label><select class="form-select" id="jpRollingKe" required><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
         <div class="col-6"><label class="form-label">Jam Rolling</label><input type="text" class="form-control" value="Otomatis saat disimpan" disabled></div>
         <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="jpRegu" required>${selectOptions(OPT_REGU)}</select></div>
@@ -1333,7 +1426,7 @@ function openJurnalForm() {
 }
 function submitJurnalForm(evt) {
   evt.preventDefault();
-  const payload = { tanggal: val('jpTanggal'), rollingKe: val('jpRollingKe'),
+  const payload = { tanggal: val('jpTanggal'), tanggalDinas: ipgGetDinas('jp'), rollingKe: val('jpRollingKe'),
     shift: val('jpShift'), regu: val('jpRegu'), posJaga: val('jpPos'),
     petugasLama: val('jpPetugasLama'), petugasBaru: val('jpPetugasBaru'),
     kondisi: val('jpKondisi'), catatan: val('jpCatatan'), createdBy: AppState.user.Nama };
@@ -1379,8 +1472,9 @@ function openMutasiJagaForm() {
   openFormModal('Mutasi Jaga Pos — Serah Terima', `
     <form id="formMutasiJaga" onsubmit="return submitMutasiJagaForm(event)">
       <div class="row g-2">
-        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="mjTanggal" required value="${ipgTanggalDinas(ipgShiftNow(60))}" oninput="this.dataset.manual='1'"></div>
-        <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="mjShift" required onchange="ipgSyncTanggalDinas('mjShift','mjTanggal')">${selectOptions(OPT_SHIFT, ipgShiftNow(60))}</select></div>
+        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="mjTanggal" required value="${ipgToday()}"></div>
+        <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="mjShift" required>${selectOptions(OPT_SHIFT, ipgShiftNow(60))}</select></div>
+        <div class="col-12"><div class="small" id="mjDinasInfo"></div></div>
         <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="mjRegu" required>${selectOptions(OPT_REGU)}</select></div>
         <div class="col-6"><label class="form-label">Pos Jaga</label><select class="form-select" id="mjPos" required>${selectOptions(OPT_POS)}</select></div>
         <div class="col-12">
@@ -1409,17 +1503,17 @@ function openMutasiJagaForm() {
 }
 let lastJurnalRowsForBA = [];
 function cariJurnalTerkait() {
-  const tanggal = val('mjTanggal'), shift = val('mjShift'), pos = val('mjPos'), regu = val('mjRegu');
+  const tanggal = ipgGetDinas('mj'), shift = val('mjShift'), pos = val('mjPos'), regu = val('mjRegu');
   const wrap = document.getElementById('jurnalTerkaitWrap');
   wrap.innerHTML = '<div class="small text-muted">Mencari...</div>';
   google.script.run.withSuccessHandler(res => {
-    const rows = (res.data||[]).filter(r => (r.Tanggal||'').slice(0,10)===tanggal && r.Shift===shift && r.PosJaga===pos && r.Regu===regu)
+    const rows = (res.data||[]).filter(r => ipgDinasOf(r)===tanggal && r.Shift===shift && r.PosJaga===pos && r.Regu===regu)
       .sort((a,b)=> Number(a.RollingKe||0) - Number(b.RollingKe||0));
     lastJurnalRowsForBA = rows;
-    if (rows.length === 0) { wrap.innerHTML = '<div class="small text-muted">Belum ada jurnal tercatat untuk kombinasi Tanggal/Shift/Regu/Pos ini.</div>'; return; }
+    if (rows.length === 0) { wrap.innerHTML = '<div class="small text-muted">Belum ada jurnal tercatat untuk kombinasi Dinas/Shift/Regu/Pos ini.</div>'; return; }
     wrap.innerHTML = `<div class="pill pill-info mb-1">${rows.length} entri jurnal ditemukan — akan tersimpan sebagai Section A</div>
       <div class="table-responsive-ip"><table class="table-ip"><thead><tr><th>Rolling</th><th>Jam</th><th>Petugas</th><th>Kondisi</th><th>Catatan</th></tr></thead>
-      <tbody>${rows.map(r=>`<tr><td>Rolling ${r.RollingKe}</td><td>${r.JamRolling}</td><td>${r.PetugasLama} → ${r.PetugasBaru}</td><td>${kondisiJurnalPill(r.Kondisi)}</td><td>${r.Catatan||'-'}</td></tr>`).join('')}</tbody></table></div>`;
+      <tbody>${rows.map(r=>`<tr><td>Rolling ${r.RollingKe}</td><td>${ipgTglPendek(r.Tanggal)} ${r.JamRolling}</td><td>${r.PetugasLama} → ${r.PetugasBaru}</td><td>${kondisiJurnalPill(r.Kondisi)}</td><td>${r.Catatan||'-'}</td></tr>`).join('')}</tbody></table></div>`;
   }).getAllData('JURNAL_POS');
 }
 function submitMutasiJagaForm(evt) {
@@ -1434,7 +1528,7 @@ function submitMutasiJagaForm(evt) {
     });
   });
   const payload = {
-    tanggal: val('mjTanggal'), shift: val('mjShift'), posJaga: val('mjPos'), regu: val('mjRegu'),
+    tanggal: val('mjTanggal'), tanggalDinas: ipgGetDinas('mj'), shift: val('mjShift'), posJaga: val('mjPos'), regu: val('mjRegu'),
     sectionAEntries: lastJurnalRowsForBA,
     sectionBItems, sectionC: { catatan: val('mjSectionC') },
     sectionD: val('mjSectionD'), sectionDKategori: val('mjSectionDKategori'), sectionE: val('mjSectionE'), createdBy: AppState.user.Nama
@@ -1505,8 +1599,9 @@ function openChecklistForm() {
   openFormModal('Checklist Sarana & Prasarana', `
     <form id="formChecklist" onsubmit="return submitChecklistForm(event)">
       <div class="row g-2 mb-2">
-        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="csTanggal" required value="${ipgTanggalDinas(ipgShiftNow())}" oninput="this.dataset.manual='1'"></div>
-        <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="csShift" required onchange="ipgSyncTanggalDinas('csShift','csTanggal')">${selectOptions(OPT_SHIFT, ipgShiftNow())}</select></div>
+        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="csTanggal" required value="${ipgToday()}"></div>
+        <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="csShift" required>${selectOptions(OPT_SHIFT, ipgShiftNow())}</select></div>
+        <div class="col-12"><div class="small" id="csDinasInfo"></div></div>
         <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="csRegu" required>${selectOptions(OPT_REGU)}</select></div>
         <div class="col-6"><label class="form-label">Pemeriksa</label><input type="text" class="form-control" id="csPemeriksa" list="personelNamaOptions" required value="${AppState.user.Nama}"></div>
       </div>
@@ -1566,7 +1661,7 @@ function submitChecklistForm(evt) {
       keterangan: tr.querySelector('.cs-keterangan').value
     });
   });
-  const payload = { tanggal: val('csTanggal'), shift: val('csShift'), regu: val('csRegu'), pemeriksa: val('csPemeriksa'), items, createdBy: AppState.user.Nama };
+  const payload = { tanggal: val('csTanggal'), tanggalDinas: ipgGetDinas('cs'), shift: val('csShift'), regu: val('csRegu'), pemeriksa: val('csPemeriksa'), items, createdBy: AppState.user.Nama };
   closeFormModal();
   callServer('submitChecklistSarpras', [payload], null, loadChecklistSarpras, 'Menyimpan checklist...');
   return false;
@@ -1587,7 +1682,7 @@ function cetakChecklistSarpras(id) {
         <td style="border:1px solid #ccc;padding:5px;">${it.fotoUrl?`<a href="${it.fotoUrl}" target="_blank">Lihat</a>`:'-'}</td>
       </tr>`).join('');
     const body = buildLetterheadHTML('checklistSarpras',
-        `Tanggal: ${fmtTanggalIndo(r.Tanggal)} &nbsp;|&nbsp; Shift ${r.Shift} &nbsp;|&nbsp; Regu ${r.Regu} &nbsp;|&nbsp; Pemeriksa: ${r.Pemeriksa}`) + `
+        `Tanggal: ${ipgTanggalDinasPanjang(r)} &nbsp;|&nbsp; Shift ${r.Shift} &nbsp;|&nbsp; Regu ${r.Regu} &nbsp;|&nbsp; Pemeriksa: ${r.Pemeriksa}`) + `
       <table style="width:100%;border-collapse:collapse;margin-top:6px;font-size:11px;">
         <thead><tr>
           <th style="border:1px solid #ccc;padding:5px;background:#eef2f8;">Nama Sarpras</th>
@@ -1602,7 +1697,7 @@ function cetakChecklistSarpras(id) {
       </table>` + buildApprovalTable([
         { label: 'Danru', name: r.DanruBy },
         { label: 'TL Keamanan', name: r.TLBy }
-      ], `Checklist Sarpras ${fmtTanggalIndo(r.Tanggal)} Shift ${r.Shift} Regu ${r.Regu}`);
+      ], `Checklist Sarpras ${ipgTanggalDinasPanjang(r)} Shift ${r.Shift} Regu ${r.Regu}`);
     openPrintDocument(body);
   }).withFailureHandler(e=>showToast('Error',e.message,'danger')).getAllData('CHECKLIST_SARPRAS');
 }
@@ -1622,7 +1717,7 @@ function loadPatroli() {
        <div class="card-ip mb-3">
          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
            <h6 class="mb-0"><i class="bi bi-geo-alt-fill"></i> Log Titik Patroli <span class="badge-prd">Referensi, tanpa approval</span></h6>
-           <input type="date" class="form-control form-control-sm" id="logPatroliTanggalInput" style="width:auto;" value="${logPatroliTanggal}" onchange="onLogPatroliTanggalChange()">
+           <label class="small text-muted mb-0" for="logPatroliTanggalInput">Tanggal dinas</label><input type="date" class="form-control form-control-sm" id="logPatroliTanggalInput" style="width:auto;" title="Shift Malam tercatat pada tanggal mulai shift (mis. Malam 23/24 → pilih 23)" value="${logPatroliTanggal}" onchange="onLogPatroliTanggalChange()">
          </div>
          <div id="tblLogPatroli"></div>
        </div>
@@ -1758,10 +1853,10 @@ function loadLogPatroliList() {
   }).getAllData('LOG_PATROLI');
 }
 function renderLogPatroliTable() {
-  const rows = logPatroliAllData.filter(r => (r.Tanggal||'').slice(0,10) === logPatroliTanggal)
+  const rows = logPatroliAllData.filter(r => ipgDinasOf(r) === logPatroliTanggal)
     .sort((a,b)=> new Date(b.WaktuInput)-new Date(a.WaktuInput));
   renderGenericTable('tblLogPatroli',
-    [ {label:'Jam Scan', key:'JamScan'}, {label:'Putaran', render:r=>`#${r.Putaran}`}, {label:'Shift', key:'Shift'}, {label:'Regu', key:'Regu'},
+    [ {label:'Tanggal', render:r=>ipgTglPendek(r.Tanggal)}, {label:'Jam Scan', key:'JamScan'}, {label:'Putaran', render:r=>`#${r.Putaran}`}, {label:'Dinas', render:r=>ipgLabelDinas(ipgDinasOf(r), r.Shift)}, {label:'Regu', key:'Regu'},
       {label:'Titik Patroli', key:'TitikPatroli'}, {label:'Metode', render:r=>patroliMetodePill(r.Metode)},
       {label:'Jarak', render:r=> r.JarakMeter!=='' && r.JarakMeter!==undefined ? `${r.JarakMeter} m` : '-'},
       {label:'Status', render:r=> patroliStatusPill(r.StatusVerifikasi)} ],
@@ -1806,8 +1901,9 @@ function openLogPatroliForm() {
     <p class="section-sub mb-2"><i class="bi bi-info-circle"></i> Jam tercatat otomatis saat tombol "Verifikasi & Simpan" diklik.</p>
     <form onsubmit="return submitLogPatroliForm(event)">
       <div class="row g-2">
-        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="ptTanggal" required value="${ipgTanggalDinas(ipgShiftNow())}" oninput="this.dataset.manual='1'"></div>
-        <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="ptShift" required onchange="ipgSyncTanggalDinas('ptShift','ptTanggal')">${selectOptions(OPT_SHIFT, ipgShiftNow())}</select></div>
+        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="ptTanggal" required value="${ipgToday()}"></div>
+        <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="ptShift" required>${selectOptions(OPT_SHIFT, ipgShiftNow())}</select></div>
+        <div class="col-12"><div class="small" id="ptDinasInfo"></div></div>
         <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="ptRegu" required>${selectOptions(OPT_REGU)}</select></div>
         <div class="col-6"><label class="form-label">Putaran</label><select class="form-select" id="ptPutaran" required>
           <option value="1">Putaran 1</option><option value="2">Putaran 2</option><option value="3">Putaran 3</option><option value="4">Putaran 4</option>
@@ -1845,6 +1941,7 @@ function openLogPatroliForm() {
     </form>`);
   lastGPS = null; lastQrText = null;
   document.getElementById('ptPutaran').value = String(ipgPutaranNow()); // otomatis sesuai jadwal, tetap bisa diubah
+  ipgUpdateDinas('pt');
   google.script.run.withSuccessHandler(res => {
     patroliTitikList = res.data || [];
     const sel = document.getElementById('ptTitik');
@@ -2020,7 +2117,7 @@ function onQrScanned(text) {
 function submitLogPatroliForm(evt) {
   evt.preventDefault();
   const base = {
-    tanggal: val('ptTanggal'), shift: val('ptShift'), regu: val('ptRegu'), putaran: val('ptPutaran'),
+    tanggal: val('ptTanggal'), tanggalDinas: ipgGetDinas('pt'), shift: val('ptShift'), regu: val('ptRegu'), putaran: val('ptPutaran'),
     createdBy: AppState.user.Nama
   };
   let payload;
@@ -2047,9 +2144,10 @@ function openRekapPatroliForm() {
   openFormModal('Buat Rekap Patroli Shift Ini', `
     <form id="formRekapPatroli" onsubmit="return submitRekapPatroliForm(event)">
       <div class="row g-2">
-        <div class="col-4"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="rpTanggal" required value="${ipgTanggalDinas(ipgShiftNow(60))}" oninput="this.dataset.manual='1'"></div>
-        <div class="col-4"><label class="form-label">Shift</label><select class="form-select" id="rpShift" required onchange="ipgSyncTanggalDinas('rpShift','rpTanggal')">${selectOptions(OPT_SHIFT, ipgShiftNow(60))}</select></div>
+        <div class="col-4"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="rpTanggal" required value="${ipgToday()}"></div>
+        <div class="col-4"><label class="form-label">Shift</label><select class="form-select" id="rpShift" required>${selectOptions(OPT_SHIFT, ipgShiftNow(60))}</select></div>
         <div class="col-4"><label class="form-label">Regu</label><select class="form-select" id="rpRegu" required>${selectOptions(OPT_REGU)}</select></div>
+        <div class="col-12"><div class="small" id="rpDinasInfo"></div></div>
         <div class="col-12">
           <span class="pill pill-info">Matrix 4 Putaran × Titik Patroli — otomatis dikompilasi dari Log Titik</span>
           <div id="patroliLogTerkaitWrap" class="mt-2"></div>
@@ -2082,14 +2180,14 @@ function buildPatroliMatrixHtml(shift, titikMaster, logs) {
 }
 
 function cariLogPatroliTerkait() {
-  const tanggal = val('rpTanggal'), shift = val('rpShift'), regu = val('rpRegu');
+  const tanggal = ipgGetDinas('rp'), shift = val('rpShift'), regu = val('rpRegu');
   const wrap = document.getElementById('patroliLogTerkaitWrap');
   wrap.innerHTML = '<div class="small text-muted">Mencari...</div>';
   Promise.all([
     new Promise(resolve => google.script.run.withSuccessHandler(resolve).getAllData('LOG_PATROLI')),
     new Promise(resolve => google.script.run.withSuccessHandler(resolve).getAllData('MASTER_TITIK_PATROLI'))
   ]).then(([logRes, titikRes]) => {
-    const logs = (logRes.data||[]).filter(r => (r.Tanggal||'').slice(0,10)===tanggal && r.Shift===shift && r.Regu===regu);
+    const logs = (logRes.data||[]).filter(r => ipgDinasOf(r)===tanggal && r.Shift===shift && r.Regu===regu);
     const titikMaster = titikRes.data || [];
     lastPatroliLogsForRekap = logs;
     wrap.innerHTML = `<div class="pill pill-info mb-1">${logs.length} titik discan dari ${titikMaster.length} titik terdaftar</div>` + buildPatroliMatrixHtml(shift, titikMaster, logs);
@@ -2098,7 +2196,7 @@ function cariLogPatroliTerkait() {
 function submitRekapPatroliForm(evt) {
   evt.preventDefault();
   const payload = {
-    tanggal: val('rpTanggal'), shift: val('rpShift'), regu: val('rpRegu'),
+    tanggal: val('rpTanggal'), tanggalDinas: ipgGetDinas('rp'), shift: val('rpShift'), regu: val('rpRegu'),
     titikEntries: lastPatroliLogsForRekap, catatanTemuan: val('rpCatatanTemuan'), createdBy: AppState.user.Nama
   };
   closeFormModal();
@@ -2145,7 +2243,7 @@ function cetakRekapPatroli(id) {
     let logs = []; try { logs = JSON.parse(r.TitikEntries || '[]'); } catch(e) {}
     const titikMaster = titikRes.data || [];
     const body = buildLetterheadHTML('rekapPatroli',
-        `No. Rekap: ${r.NoRekap} &nbsp;|&nbsp; Shift ${r.Shift} &nbsp;|&nbsp; Regu ${r.Regu} &nbsp;|&nbsp; ${fmtTanggalIndo(r.Tanggal)}`) + `
+        `No. Rekap: ${r.NoRekap} &nbsp;|&nbsp; Shift ${r.Shift} &nbsp;|&nbsp; Regu ${r.Regu} &nbsp;|&nbsp; ${ipgTanggalDinasPanjang(r)}`) + `
       <div>${buildPatroliMatrixPrintHtml(r.Shift, titikMaster, logs)}</div>
       <p style="font-size:12px; margin-top:10px;"><b>Catatan Temuan:</b> ${r.CatatanTemuan || 'Nihil'}</p>` + buildApprovalTable([
         { label: 'Danru', name: r.DanruBy },
@@ -4244,7 +4342,7 @@ function cetakBAMutasiJaga(id) {
       ? sectionAEntries.map(j => `<tr><td style="border:1px solid #ddd; padding:5px;">Rolling ${j.RollingKe}</td><td style="border:1px solid #ddd; padding:5px;">${j.JamRolling}</td><td style="border:1px solid #ddd; padding:5px;">${j.PetugasLama} → ${j.PetugasBaru}</td><td style="border:1px solid #ddd; padding:5px;">${j.Kondisi}</td><td style="border:1px solid #ddd; padding:5px;">${j.Catatan||'-'}</td></tr>`).join('')
       : `<tr><td colspan="5" style="text-align:center;padding:8px;color:#999;">Tidak ada entri jurnal tercatat.</td></tr>`;
     const body = buildLetterheadHTML('mutasiJaga',
-        `No. BA: ${r.NoBA} &nbsp;|&nbsp; ${r.PosJaga} &nbsp;|&nbsp; Shift ${r.Shift} &nbsp;|&nbsp; Regu ${r.Regu} &nbsp;|&nbsp; ${fmtTanggalIndo(r.Tanggal)}`) + `
+        `No. BA: ${r.NoBA} &nbsp;|&nbsp; ${r.PosJaga} &nbsp;|&nbsp; Shift ${r.Shift} &nbsp;|&nbsp; Regu ${r.Regu} &nbsp;|&nbsp; ${ipgTanggalDinasPanjang(r)}`) + `
       <p style="font-size:12px;"><b>Status Approval:</b> ${r.StatusApproval}</p>
       <table style="width:100%; border-collapse:collapse; margin-top:4px;">
         <tr><td style="border:1px solid #ddd; padding:8px; width:24px; font-weight:700; background:#F4F7FB; vertical-align:top;">A</td>
