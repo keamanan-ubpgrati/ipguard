@@ -1078,7 +1078,7 @@ function loadMutasiJaga() {
        <div class="card-ip mb-3">
          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
            <h6 class="mb-0"><i class="bi bi-journal-text"></i> Jurnal Pos Jaga <span class="badge-prd">tanpa approval</span></h6>
-           <label class="small text-muted mb-0" for="jurnalListTanggalInput">Tanggal dinas</label><input type="date" class="form-control form-control-sm" id="jurnalListTanggalInput" style="width:auto;" title="Shift Malam tercatat pada tanggal mulai shift (mis. Malam 23/24 → pilih 23)" value="${jurnalListTanggal}" onchange="onJurnalListTanggalChange()">
+           <label class="small text-muted mb-0" for="jurnalListTanggalInput">Tanggal dinas</label><input type="date" class="form-control form-control-sm" id="jurnalListTanggalInput" style="width:auto;" title="Hari operasional: Malam (malam sebelumnya) + Pagi + Sore. Contoh: Malam 24/25 → pilih 25" value="${jurnalListTanggal}" onchange="onJurnalListTanggalChange()">
          </div>
          <div id="tblJurnalPos"></div>
        </div>
@@ -1114,8 +1114,9 @@ function jamRangeFromSectionA(json) {
 
 // ── Tanggal & shift (jam WIB perangkat) — OPSI C (hasil diskusi lanjutan) ──
 // • Kolom "Tanggal"      = tanggal KALENDER asli (yang dilihat & diisi petugas, tercetak di dokumen).
-// • Kolom "TanggalDinas" = kunci pengikat satu shift utuh (tanggal saat shift dimulai), dihitung otomatis.
-//   Shift Malam 23→24 Sep: Putaran/Rolling 1 bertanggal 23, Putaran/Rolling 2–4 bertanggal 24, dinas keduanya 23.
+// • Kolom "TanggalDinas" = kunci pengikat satu shift utuh, dihitung otomatis.
+//   Shift Malam milik tanggal PAGI saat shift itu berakhir: Malam 24→25 Sep = dinas 25 ("Dinas Malam 24/25 Sep").
+//   Hari operasional 25 = Malam 24/25 + Pagi 25 + Sore 25 (24 Sep 21.00 s.d. 25 Sep 21.00).
 // • Aturan hitung dinas sama persis dengan server (resolveTanggalDinas_ di Kode.gs).
 // Catatan: dulu dipakai toISOString() yang berbasis UTC, sehingga pukul 00.00–06.59 WIB tanggalnya mundur 1 hari.
 const IPG_BULAN_PENDEK = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
@@ -1135,10 +1136,10 @@ function ipgShiftNow(graceMin) {
   const h = new Date(Date.now() - (graceMin || 0) * 60000).getHours();
   return h >= 6 && h < 14 ? 'Pagi' : h >= 14 && h < 21 ? 'Sore' : 'Malam';
 }
-/** Tanggal dinas shift yang sedang berjalan (dipakai default daftar harian & laporan) */
+/** Tanggal dinas shift yang sedang berjalan (default daftar harian, laporan). Pukul 21.00 pindah ke hari berikutnya. */
 function ipgTanggalDinas(shift) {
   const d = new Date();
-  if (shift === 'Malam' && d.getHours() < 12) d.setDate(d.getDate() - 1);
+  if (shift === 'Malam' && d.getHours() >= 12) d.setDate(d.getDate() + 1);
   return ipgYmd(d);
 }
 /** Putaran patroli terdekat sesuai jadwal (Pagi 06/08/10/12, Sore 14/16/18/20, Malam 22/00/02/04) */
@@ -1150,19 +1151,23 @@ function ipgPutaranNow() {
   return Math.min(4, Math.floor(h / 2) + 2);
 }
 /**
- * Hitung tanggal dinas dari tanggal KALENDER + shift.
- *  - Pagi/Sore: sama dengan tanggal kalender.
- *  - Malam, diisi hari ini: sebelum 12.00 → malam yang dimulai kemarin; setelahnya → malam ini.
- *  - Malam, susulan (tanggal ≠ hari ini): Putaran/Rolling 1 (22.00) → malam yang dimulai tanggal itu;
- *    Putaran/Rolling 2–4 (setelah 00.00) & dokumen akhir shift (BA/Rekap/Checklist) → malam sebelumnya.
+ * Hitung tanggal dinas dari tanggal KALENDER + shift (+ putaran/rolling). Sama persis dengan hitungDinas_ di Kode.gs.
+ *  - Pagi/Sore: sama dengan tanggal.
+ *  - Malam, diisi saat malam berjalan (tanggal = hari ini, pukul 21.00–11.59):
+ *      21.00–23.59 → besok (malam yang baru dimulai) · 00.00–11.59 → tanggal itu (malam yang sedang/baru berakhir).
+ *  - Malam, susulan (tanggal lain, atau hari ini pukul 12.00–20.59):
+ *      Putaran/Rolling 1 (22.00) → besok · Putaran/Rolling 2–4 (setelah 00.00) → tanggal itu ·
+ *      BA/Rekap/Checklist → tanggal itu (dibuat pagi saat serah terima).
+ * Kalau keterangan dinas tidak sesuai, petugas cukup membetulkan kolom Tanggal ke tanggal kejadian sebenarnya.
  */
 function ipgHitungDinas(tanggal, shift, bagian) {
   if (!tanggal) return '';
   if (shift !== 'Malam') return tanggal;
-  const kemarin = ipgAddDays(tanggal, -1);
-  if (tanggal === ipgToday()) return new Date().getHours() < 12 ? kemarin : tanggal;
-  if (bagian) return Number(bagian) === 1 ? tanggal : kemarin;
-  return kemarin;
+  const besok = ipgAddDays(tanggal, 1);
+  const jam = new Date().getHours();
+  if (tanggal === ipgToday() && (jam >= 21 || jam < 12)) return jam >= 21 ? besok : tanggal;
+  if (bagian) return Number(bagian) === 1 ? besok : tanggal;
+  return tanggal;
 }
 /** Tanggal dinas sebuah baris data; data lama (sebelum kolom TanggalDinas ada) memakai kolom Tanggal */
 function ipgDinasOf(r) { return String((r && (r.TanggalDinas || r.Tanggal)) || '').slice(0, 10); }
@@ -1171,21 +1176,23 @@ function ipgTglPendek(ymd) {
   const d = ipgParseYmd(ymd);
   return isNaN(d) ? ymd : d.getDate() + ' ' + IPG_BULAN_PENDEK[d.getMonth()];
 }
-/** "Malam 23/24 Sep" · "Malam 30 Sep/1 Okt" · "Pagi 24 Sep" */
+/** "Malam 24/25 Sep" (dinas 25) · "Malam 30 Sep/1 Okt" (dinas 1 Okt) · "Pagi 25 Sep" */
 function ipgLabelDinas(dinas, shift) {
   if (!dinas) return '-';
   if (shift !== 'Malam') return (shift ? shift + ' ' : '') + ipgTglPendek(dinas);
-  const a = ipgParseYmd(dinas), b = ipgParseYmd(ipgAddDays(dinas, 1));
+  const a = ipgParseYmd(ipgAddDays(dinas, -1)), b = ipgParseYmd(dinas);
   const kiri = a.getMonth() === b.getMonth() ? String(a.getDate()) : a.getDate() + ' ' + IPG_BULAN_PENDEK[a.getMonth()];
   return 'Malam ' + kiri + '/' + b.getDate() + ' ' + IPG_BULAN_PENDEK[b.getMonth()];
 }
-/** Untuk dokumen cetak: "Rabu–Kamis, 23–24 September 2026" (Malam) · "Kamis, 24 September 2026" */
+/** Untuk dokumen cetak: "Kamis–Jum'at, 24–25 September 2026" (Malam dinas 25) · "Jum'at, 25 September 2026" */
 function ipgTanggalDinasPanjang(r) {
   const dinas = ipgDinasOf(r);
   if (!dinas) return '-';
-  const a = ipgParseYmd(dinas);
-  if (r.Shift !== 'Malam') return IPG_HARI[a.getDay()] + ', ' + a.getDate() + ' ' + IPG_BULAN_PANJANG[a.getMonth()] + ' ' + a.getFullYear();
-  const b = ipgParseYmd(ipgAddDays(dinas, 1));
+  if (r.Shift !== 'Malam') {
+    const d = ipgParseYmd(dinas);
+    return IPG_HARI[d.getDay()] + ', ' + d.getDate() + ' ' + IPG_BULAN_PANJANG[d.getMonth()] + ' ' + d.getFullYear();
+  }
+  const a = ipgParseYmd(ipgAddDays(dinas, -1)), b = ipgParseYmd(dinas);
   const hari = IPG_HARI[a.getDay()] + '–' + IPG_HARI[b.getDay()];
   if (a.getFullYear() !== b.getFullYear())
     return `${hari}, ${a.getDate()} ${IPG_BULAN_PANJANG[a.getMonth()]} ${a.getFullYear()} – ${b.getDate()} ${IPG_BULAN_PANJANG[b.getMonth()]} ${b.getFullYear()}`;
@@ -1194,7 +1201,7 @@ function ipgTanggalDinasPanjang(r) {
   return `${hari}, ${a.getDate()}–${b.getDate()} ${IPG_BULAN_PANJANG[a.getMonth()]} ${a.getFullYear()}`;
 }
 
-// ── Keterangan dinas di 5 form (id: <prefix>DinasInfo). Untuk Malam bisa diklik untuk memilih malam lainnya. ──
+// ── Keterangan dinas di 5 form (id: <prefix>DinasInfo) — hanya konfirmasi, dihitung ulang setiap isian berubah ──
 function _ipgBagian(pre) {
   if (pre === 'jp') return val('jpRollingKe');
   if (pre === 'pt') return val('ptPutaran');
@@ -1203,37 +1210,20 @@ function _ipgBagian(pre) {
 function ipgUpdateDinas(pre) {
   const info = document.getElementById(pre + 'DinasInfo');
   if (!info) return;
-  const tanggal = val(pre + 'Tanggal'), shift = val(pre + 'Shift');
-  const dinas = info.dataset.override || ipgHitungDinas(tanggal, shift, _ipgBagian(pre));
+  const shift = val(pre + 'Shift');
+  const dinas = ipgHitungDinas(val(pre + 'Tanggal'), shift, _ipgBagian(pre));
   info.dataset.value = dinas;
-  if (!dinas) { info.innerHTML = ''; return; }
-  let html = `<span class="pill pill-info"><i class="bi bi-moon-stars"></i> Dinas ${ipgLabelDinas(dinas, shift)}</span>`;
-  if (shift === 'Malam') {
-    const lain = dinas === tanggal ? ipgAddDays(tanggal, -1) : tanggal;
-    html += ` <a href="javascript:void(0)" class="small-link ms-1" onclick="ipgToggleDinas('${pre}','${lain}')">Bukan? Pilih ${ipgLabelDinas(lain, 'Malam')}</a>`;
-  }
-  info.innerHTML = html;
-}
-function ipgToggleDinas(pre, dinas) {
-  const info = document.getElementById(pre + 'DinasInfo');
-  if (!info) return;
-  info.dataset.override = dinas;
-  ipgUpdateDinas(pre);
-  if (pre === 'mj') cariJurnalTerkait();       // Section A ikut mencari ulang malam yang dipilih
-  if (pre === 'rp') cariLogPatroliTerkait();    // matrix rekap ikut mencari ulang
+  info.innerHTML = dinas ? `<span class="pill pill-info"><i class="bi bi-calendar-check"></i> Dinas ${ipgLabelDinas(dinas, shift)}</span>` : '';
 }
 function ipgGetDinas(pre) {
   const info = document.getElementById(pre + 'DinasInfo');
   return (info && info.dataset.value) || ipgHitungDinas(val(pre + 'Tanggal'), val(pre + 'Shift'), _ipgBagian(pre));
 }
-// Tanggal / Shift / Rolling / Putaran berubah → keterangan dinas dihitung ulang (pilihan manual direset).
-// Dipasang di fase capture supaya dinas sudah benar sebelum pencarian Section A / Rekap berjalan.
+// Tanggal / Shift / Rolling / Putaran berubah → keterangan dinas dihitung ulang.
+// Fase capture: dinas sudah benar sebelum pencarian Section A / Rekap (listener bawaan form) berjalan.
 document.addEventListener('change', e => {
   const m = /^(jp|mj|cs|pt|rp)(Tanggal|Shift|RollingKe|Putaran)$/.exec(e.target && e.target.id || '');
-  if (!m) return;
-  const info = document.getElementById(m[1] + 'DinasInfo');
-  if (info) delete info.dataset.override;
-  ipgUpdateDinas(m[1]);
+  if (m) ipgUpdateDinas(m[1]);
 }, true);
 
 // Pilihan baku — konsisten dipakai di Jurnal Pos & Mutasi Jaga (hasil diskusi lanjutan)
@@ -1717,7 +1707,7 @@ function loadPatroli() {
        <div class="card-ip mb-3">
          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
            <h6 class="mb-0"><i class="bi bi-geo-alt-fill"></i> Log Titik Patroli <span class="badge-prd">Referensi, tanpa approval</span></h6>
-           <label class="small text-muted mb-0" for="logPatroliTanggalInput">Tanggal dinas</label><input type="date" class="form-control form-control-sm" id="logPatroliTanggalInput" style="width:auto;" title="Shift Malam tercatat pada tanggal mulai shift (mis. Malam 23/24 → pilih 23)" value="${logPatroliTanggal}" onchange="onLogPatroliTanggalChange()">
+           <label class="small text-muted mb-0" for="logPatroliTanggalInput">Tanggal dinas</label><input type="date" class="form-control form-control-sm" id="logPatroliTanggalInput" style="width:auto;" title="Hari operasional: Malam (malam sebelumnya) + Pagi + Sore. Contoh: Malam 24/25 → pilih 25" value="${logPatroliTanggal}" onchange="onLogPatroliTanggalChange()">
          </div>
          <div id="tblLogPatroli"></div>
        </div>
