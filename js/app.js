@@ -1111,6 +1111,39 @@ function jamRangeFromSectionA(json) {
   } catch(e) { return '-'; }
 }
 
+// ── Tanggal & shift (jam WIB perangkat) — konsep TANGGAL DINAS, aturannya sama persis dengan server (getTanggalDinas_) ──
+// Satu shift = satu tanggal: tanggal saat shift DIMULAI. Shift Malam yang diisi 00.00–11.59 milik tanggal kemarin.
+// Catatan: dulu dipakai toISOString() yang berbasis UTC, sehingga pukul 00.00–06.59 WIB tanggalnya mundur 1 hari.
+function ipgYmd(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+/** Tanggal kalender hari ini — untuk modul yang tidak terikat shift (tamu, kendaraan, barang keluar, dll.) */
+function ipgToday() { return ipgYmd(new Date()); }
+/** Shift berjalan. graceMin: untuk dokumen akhir shift (BA, Rekap) — pukul 06.15 dengan tenggang 60 menit masih Malam */
+function ipgShiftNow(graceMin) {
+  const h = new Date(Date.now() - (graceMin || 0) * 60000).getHours();
+  return h >= 6 && h < 14 ? 'Pagi' : h >= 14 && h < 21 ? 'Sore' : 'Malam';
+}
+function ipgTanggalDinas(shift) {
+  const d = new Date();
+  if (shift === 'Malam' && d.getHours() < 12) d.setDate(d.getDate() - 1);
+  return ipgYmd(d);
+}
+/** Putaran patroli terdekat sesuai jadwal (Pagi 06/08/10/12, Sore 14/16/18/20, Malam 22/00/02/04) */
+function ipgPutaranNow() {
+  const h = new Date().getHours();
+  if (h >= 6 && h < 14) return Math.min(4, Math.floor((h - 6) / 2) + 1);
+  if (h >= 14 && h < 21) return Math.min(4, Math.floor((h - 14) / 2) + 1);
+  if (h >= 21) return 1;
+  return Math.min(4, Math.floor(h / 2) + 2);
+}
+/** Saat Shift diganti, tanggal ikut menyesuaikan — kecuali tanggal sudah diubah manual oleh petugas */
+function ipgSyncTanggalDinas(shiftId, tanggalId) {
+  const t = document.getElementById(tanggalId);
+  if (!t || t.dataset.manual === '1') return;
+  t.value = ipgTanggalDinas(val(shiftId));
+}
+
 // Pilihan baku — konsisten dipakai di Jurnal Pos & Mutasi Jaga (hasil diskusi lanjutan)
 const OPT_SHIFT = ['Pagi', 'Sore', 'Malam'];
 const KONDISI_JURNAL_PILL = { 'Aman': 'pill-success', 'Waspada': 'pill-warning', 'Bahaya': 'pill-danger' };
@@ -1130,7 +1163,7 @@ function selectOptions(list, selected) {
   return list.map(o => `<option ${o===selected?'selected':''}>${o}</option>`).join('');
 }
 
-let jurnalListTanggal = new Date().toISOString().slice(0,10);
+let jurnalListTanggal = ipgTanggalDinas(ipgShiftNow());
 function loadJurnalList() {
   google.script.run.withSuccessHandler(res => {
     jurnalListAllData = res.data || [];
@@ -1170,7 +1203,7 @@ let reportModalState = { moduleKey: null, periodLabel: null, format: 'excel' };
 
 function openUnduhLaporanModal(moduleKey) {
   const cfg = REPORT_MODULE_CONFIG[moduleKey];
-  const today = new Date().toISOString().slice(0,10);
+  const today = ipgTanggalDinas(ipgShiftNow());
   reportModalState = { moduleKey, periodType: 'Harian', periodValue: today, format: 'excel' };
   const periodSectionHtml = cfg.dailyOnly
     ? `<div class="mb-3"><label class="form-label">Tanggal Laporan</label><input type="date" class="form-control" id="reportPeriodInput" value="${today}" onchange="onReportPeriodChange()"></div>`
@@ -1207,11 +1240,11 @@ function setReportPeriodType(type) {
   document.getElementById('segReportBulanan').classList.toggle('active', type === 'Bulanan');
   const wrap = document.getElementById('reportPeriodInputWrap');
   if (type === 'Harian') {
-    const v = new Date().toISOString().slice(0,10);
+    const v = ipgTanggalDinas(ipgShiftNow());
     wrap.innerHTML = `<input type="date" class="form-control" id="reportPeriodInput" value="${v}" onchange="onReportPeriodChange()">`;
     reportModalState.periodValue = v;
   } else {
-    const v = new Date().toISOString().slice(0,7);
+    const v = ipgToday().slice(0,7);
     wrap.innerHTML = `<input type="month" class="form-control" id="reportPeriodInput" value="${v}" onchange="onReportPeriodChange()">`;
     reportModalState.periodValue = v;
   }
@@ -1283,8 +1316,8 @@ function openJurnalForm() {
     <form onsubmit="return submitJurnalForm(event)">
       <p class="section-sub mb-2"><i class="bi bi-info-circle"></i> Jam shift resmi Satpam PLN IP UBP Grati: Pagi 06.00–14.00, Sore 14.00–21.00, Malam 21.00–06.00.</p>
       <div class="row g-2">
-        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="jpTanggal" required value="${new Date().toISOString().slice(0,10)}"></div>
-        <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="jpShift" required>${selectOptions(OPT_SHIFT)}</select></div>
+        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="jpTanggal" required value="${ipgTanggalDinas(ipgShiftNow())}" oninput="this.dataset.manual='1'"></div>
+        <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="jpShift" required onchange="ipgSyncTanggalDinas('jpShift','jpTanggal')">${selectOptions(OPT_SHIFT, ipgShiftNow())}</select></div>
         <div class="col-6"><label class="form-label">Rolling ke</label><select class="form-select" id="jpRollingKe" required><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
         <div class="col-6"><label class="form-label">Jam Rolling</label><input type="text" class="form-control" value="Otomatis saat disimpan" disabled></div>
         <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="jpRegu" required>${selectOptions(OPT_REGU)}</select></div>
@@ -1346,8 +1379,8 @@ function openMutasiJagaForm() {
   openFormModal('Mutasi Jaga Pos — Serah Terima', `
     <form id="formMutasiJaga" onsubmit="return submitMutasiJagaForm(event)">
       <div class="row g-2">
-        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="mjTanggal" required value="${new Date().toISOString().slice(0,10)}"></div>
-        <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="mjShift" required>${selectOptions(OPT_SHIFT)}</select></div>
+        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="mjTanggal" required value="${ipgTanggalDinas(ipgShiftNow(60))}" oninput="this.dataset.manual='1'"></div>
+        <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="mjShift" required onchange="ipgSyncTanggalDinas('mjShift','mjTanggal')">${selectOptions(OPT_SHIFT, ipgShiftNow(60))}</select></div>
         <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="mjRegu" required>${selectOptions(OPT_REGU)}</select></div>
         <div class="col-6"><label class="form-label">Pos Jaga</label><select class="form-select" id="mjPos" required>${selectOptions(OPT_POS)}</select></div>
         <div class="col-12">
@@ -1472,8 +1505,8 @@ function openChecklistForm() {
   openFormModal('Checklist Sarana & Prasarana', `
     <form id="formChecklist" onsubmit="return submitChecklistForm(event)">
       <div class="row g-2 mb-2">
-        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="csTanggal" required value="${new Date().toISOString().slice(0,10)}"></div>
-        <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="csShift" required>${selectOptions(OPT_SHIFT)}</select></div>
+        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="csTanggal" required value="${ipgTanggalDinas(ipgShiftNow())}" oninput="this.dataset.manual='1'"></div>
+        <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="csShift" required onchange="ipgSyncTanggalDinas('csShift','csTanggal')">${selectOptions(OPT_SHIFT, ipgShiftNow())}</select></div>
         <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="csRegu" required>${selectOptions(OPT_REGU)}</select></div>
         <div class="col-6"><label class="form-label">Pemeriksa</label><input type="text" class="form-control" id="csPemeriksa" list="personelNamaOptions" required value="${AppState.user.Nama}"></div>
       </div>
@@ -1716,7 +1749,7 @@ function renderPutaranCard(p) {
     </div>`;
 }
 
-let logPatroliTanggal = new Date().toISOString().slice(0,10);
+let logPatroliTanggal = ipgTanggalDinas(ipgShiftNow());
 let logPatroliAllData = [];
 function loadLogPatroliList() {
   google.script.run.withSuccessHandler(res => {
@@ -1773,8 +1806,8 @@ function openLogPatroliForm() {
     <p class="section-sub mb-2"><i class="bi bi-info-circle"></i> Jam tercatat otomatis saat tombol "Verifikasi & Simpan" diklik.</p>
     <form onsubmit="return submitLogPatroliForm(event)">
       <div class="row g-2">
-        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="ptTanggal" required value="${new Date().toISOString().slice(0,10)}"></div>
-        <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="ptShift" required>${selectOptions(OPT_SHIFT)}</select></div>
+        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="ptTanggal" required value="${ipgTanggalDinas(ipgShiftNow())}" oninput="this.dataset.manual='1'"></div>
+        <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="ptShift" required onchange="ipgSyncTanggalDinas('ptShift','ptTanggal')">${selectOptions(OPT_SHIFT, ipgShiftNow())}</select></div>
         <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="ptRegu" required>${selectOptions(OPT_REGU)}</select></div>
         <div class="col-6"><label class="form-label">Putaran</label><select class="form-select" id="ptPutaran" required>
           <option value="1">Putaran 1</option><option value="2">Putaran 2</option><option value="3">Putaran 3</option><option value="4">Putaran 4</option>
@@ -1811,6 +1844,7 @@ function openLogPatroliForm() {
       <button type="submit" class="btn btn-primary-ip w-100 mt-3"><i class="bi bi-check2-circle"></i> Verifikasi &amp; Simpan Titik</button>
     </form>`);
   lastGPS = null; lastQrText = null;
+  document.getElementById('ptPutaran').value = String(ipgPutaranNow()); // otomatis sesuai jadwal, tetap bisa diubah
   google.script.run.withSuccessHandler(res => {
     patroliTitikList = res.data || [];
     const sel = document.getElementById('ptTitik');
@@ -2013,8 +2047,8 @@ function openRekapPatroliForm() {
   openFormModal('Buat Rekap Patroli Shift Ini', `
     <form id="formRekapPatroli" onsubmit="return submitRekapPatroliForm(event)">
       <div class="row g-2">
-        <div class="col-4"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="rpTanggal" required value="${new Date().toISOString().slice(0,10)}"></div>
-        <div class="col-4"><label class="form-label">Shift</label><select class="form-select" id="rpShift" required>${selectOptions(OPT_SHIFT)}</select></div>
+        <div class="col-4"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="rpTanggal" required value="${ipgTanggalDinas(ipgShiftNow(60))}" oninput="this.dataset.manual='1'"></div>
+        <div class="col-4"><label class="form-label">Shift</label><select class="form-select" id="rpShift" required onchange="ipgSyncTanggalDinas('rpShift','rpTanggal')">${selectOptions(OPT_SHIFT, ipgShiftNow(60))}</select></div>
         <div class="col-4"><label class="form-label">Regu</label><select class="form-select" id="rpRegu" required>${selectOptions(OPT_REGU)}</select></div>
         <div class="col-12">
           <span class="pill pill-info">Matrix 4 Putaran × Titik Patroli — otomatis dikompilasi dari Log Titik</span>
@@ -2148,7 +2182,7 @@ function loadIzinTamu() {
   }).getAllData('IZIN_TAMU');
 }
 function renderChecklistSarprasModuleDashboard(rows) {
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = ipgToday();
   const rowsHariIni = rows.filter(r => (r.Tanggal||'').toString().slice(0,10) === todayStr);
   const itemRusakHariIni = rowsHariIni.reduce((sum, r) => {
     try { return sum + JSON.parse(r.ItemsJSON||'[]').filter(it=>Number(it.rusak)>0).length; } catch(e) { return sum; }
@@ -2166,7 +2200,7 @@ function renderChecklistSarprasModuleDashboard(rows) {
     </div></div>`).join('');
 }
 function renderMutasiJagaDashboard(rows) {
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = ipgToday();
   const rowsHariIni = rows.filter(r => (r.Tanggal||'').toString().slice(0,10) === todayStr);
   const cards = [
     { icon: 'bi-file-earmark-plus', bg: 'var(--tint-blue)', color: '#0C7A94', value: rowsHariIni.length, label: 'BA Dibuat Hari Ini' },
@@ -2181,7 +2215,7 @@ function renderMutasiJagaDashboard(rows) {
     </div></div>`).join('');
 }
 function renderIzinTamuDashboard(rows) {
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = ipgToday();
   const rowsHariIni = rows.filter(r => (r.Tanggal||'').toString().slice(0,10) === todayStr);
   const cards = [
     { icon: 'bi-person-badge', bg: 'var(--tint-blue)', color: '#0C7A94', value: rowsHariIni.length, label: 'Tamu Hari Ini' },
@@ -2222,7 +2256,7 @@ function openIzinTamuForm() {
           <input type="text" class="form-control" id="itKeperluan" list="keperluanOptions" placeholder="misal: Meeting" required>
           <datalist id="keperluanOptions"><option value="Meeting"><option value="Survey"><option value="Pemeliharaan"><option value="Inspeksi"><option value="Instalasi"></datalist>
         </div>
-        <div class="col-4"><label class="form-label">Hari/Tanggal</label><input type="date" class="form-control" id="itTanggal" value="${new Date().toISOString().slice(0,10)}" required></div>
+        <div class="col-4"><label class="form-label">Hari/Tanggal</label><input type="date" class="form-control" id="itTanggal" value="${ipgToday()}" required></div>
         <div class="col-4"><label class="form-label">Jam Masuk</label><input type="time" class="form-control" id="itJamMasuk" required></div>
         <div class="col-4">
           <label class="form-label">Jam Keluar</label>
@@ -2359,7 +2393,7 @@ function loadKendaraan() {
   }).getAllData('IZIN_KENDARAAN_MASUK');
 }
 function renderKendaraanDashboard(rows) {
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = ipgToday();
   const rowsHariIni = rows.filter(r => (r.WaktuCheckIn||'').toString().slice(0,10) === todayStr);
   const cards = [
     { icon: 'bi-truck', bg: 'var(--tint-blue)', color: '#0C7A94', value: rowsHariIni.length, label: 'Check-In Hari Ini' },
@@ -2419,8 +2453,8 @@ function openKendaraanForm() {
         <div class="col-6"><label class="form-label">Nama Pengemudi</label><input type="text" class="form-control" id="kPengemudi" required></div>
         <div class="col-6"><label class="form-label">Lokasi Pekerjaan</label><input type="text" class="form-control" id="kLokasiPekerjaan"></div>
         <div class="col-12"><label class="form-label">Keperluan</label><textarea class="form-control" id="kKeperluan" rows="2" required></textarea></div>
-        <div class="col-6"><label class="form-label">Berlaku Mulai</label><input type="date" class="form-control" id="kTglMulai" required value="${new Date().toISOString().slice(0,10)}"></div>
-        <div class="col-6"><label class="form-label">Berlaku Sampai</label><input type="date" class="form-control" id="kTglSelesai" required value="${new Date().toISOString().slice(0,10)}"></div>
+        <div class="col-6"><label class="form-label">Berlaku Mulai</label><input type="date" class="form-control" id="kTglMulai" required value="${ipgToday()}"></div>
+        <div class="col-6"><label class="form-label">Berlaku Sampai</label><input type="date" class="form-control" id="kTglSelesai" required value="${ipgToday()}"></div>
         <div class="col-6"><label class="form-label">Jam Masuk</label><input type="time" class="form-control" id="kJamMasuk"></div>
         <div class="col-6"><label class="form-label">Jam Keluar</label><input type="time" class="form-control" id="kJamKeluar"></div>
         <div class="col-8"><label class="form-label">Kategori</label><select class="form-select" id="kKategori" required onchange="toggleBatasWaktuInput()">${selectOptions(KATEGORI_IZIN_KENDARAAN)}</select></div>
@@ -2552,7 +2586,7 @@ function openBarangKeluarForm() {
     <form onsubmit="return submitBarangKeluarForm(event)">
       <div class="row g-2">
         <div class="col-12"><label class="form-label"><b>I. Yang Bertanda Tangan Dibawah Ini (SPS Bidang Pemohon)</b></label></div>
-        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="bkTanggal" value="${new Date().toISOString().slice(0,10)}" required></div>
+        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="bkTanggal" value="${ipgToday()}" required></div>
         <div class="col-6"><label class="form-label">Nama SPS Bidang</label><input type="text" class="form-control" id="bkPemohon" list="personelNamaOptions" value="${AppState.user.Nama}" required></div>
         <div class="col-6"><label class="form-label">Jabatan</label><input type="text" class="form-control" id="bkJabatanPemohon"></div>
         <div class="col-6"><label class="form-label">Kategori</label>
@@ -3028,7 +3062,7 @@ function openIncidentForm() {
         <div class="col-6"><label class="form-label">Lokasi</label><input type="text" class="form-control" id="incLokasi" placeholder="misal: Area Parkir Belakang" required></div>
         <div class="col-6"><label class="form-label">Kategori</label><select class="form-select" id="incKategori" required>${selectOptions(KATEGORI_INCIDENT)}</select></div>
         <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="incRegu">${selectOptions(OPT_REGU)}</select></div>
-        <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="incShift">${selectOptions(OPT_SHIFT)}</select></div>
+        <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="incShift">${selectOptions(OPT_SHIFT, ipgShiftNow())}</select></div>
         <div class="col-6"><label class="form-label">Tingkat Risiko</label><select class="form-select" id="incRisiko" required>${selectOptions(TINGKAT_RISIKO_LIST, 'Sedang')}</select></div>
         <div class="col-6"><label class="form-label">Pelapor</label><input type="text" class="form-control" id="incPelapor" list="personelNamaOptions" value="${AppState.user.Nama}" required></div>
         <div class="col-12"><label class="form-label">Uraian Kejadian</label><textarea class="form-control" id="incUraian" rows="3" required></textarea></div>
@@ -3706,7 +3740,7 @@ function openAwarenessForm(editId) {
         <div class="col-6"><label class="form-label">Kategori</label><input type="text" class="form-control" id="awKategori" placeholder="misal: Keamanan, K3" value="${v('Kategori')}"></div>
         <div class="col-12"><label class="form-label">Judul</label><input type="text" class="form-control" id="awJudul" required value="${v('Judul')}"></div>
         <div class="col-12"><label class="form-label">Deskripsi Singkat (tampil sebagai preview di kartu)</label><textarea class="form-control" id="awDeskripsi" rows="2" placeholder="Ringkasan singkat...">${v('Deskripsi')}</textarea></div>
-        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="awTanggal" value="${(v('Tanggal')||'').toString().slice(0,10) || new Date().toISOString().slice(0,10)}"></div>
+        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="awTanggal" value="${(v('Tanggal')||'').toString().slice(0,10) || ipgToday()}"></div>
         <div class="col-6"><label class="form-label">Status</label><select class="form-select" id="awStatus">${selectOptions(['Aktif','Non-Aktif'], v('Status') || 'Aktif')}</select></div>
         <div class="col-12"><label class="form-label">Gambar (untuk Flyer/Berita, opsional)</label>
           <input type="file" accept="image/png, image/jpeg, image/webp" class="form-control" id="awImageInput" onchange="handleAwarenessImageUpload(event)">
@@ -4163,7 +4197,7 @@ function cetakLaporanTabel(cfg) {
     const rows = res.data || [];
     const cols = cfg.columns;
     const tableRows = rows.map(r => `<tr>${cols.map(c => `<td style="border:1px solid #ddd; padding:6px;">${r[c] ?? '-'}</td>`).join('')}</tr>`).join('');
-    const body = buildLetterheadHTML(cfg.title, `LAP/${cfg.sheet}/${new Date().toISOString().slice(0,10)}`,
+    const body = buildLetterheadHTML(cfg.title, `LAP/${cfg.sheet}/${ipgToday()}`,
         `Periode cetak: ${new Date().toLocaleDateString('id-ID')} &nbsp;|&nbsp; Total data: ${rows.length}`) + `
       <table style="width:100%; border-collapse:collapse; margin-top:8px;">
         <thead><tr>${cols.map(c => `<th style="border:1px solid #ddd; padding:6px; background:#F4F7FB; text-align:left;">${c}</th>`).join('')}</tr></thead>
@@ -4190,7 +4224,7 @@ function exportToExcel(sheetName, filename, columns) {
     const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `${filename}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    a.href = url; a.download = `${filename}_${ipgToday()}.xlsx`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
     showToast('Berhasil', 'File Excel (.xlsx) berhasil diunduh.', 'success');
