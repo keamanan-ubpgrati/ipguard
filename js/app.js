@@ -356,6 +356,7 @@ function enterApp() {
   google.script.run.withSuccessHandler(res => {
     if (res.success) {
       AppState.config = res.data.config || {};
+      ipgWarmPrintAssets();
       const lhMap = {};
       (res.data.laporanHeaderConfig || []).forEach(r => { lhMap[r.ID] = r; });
       AppState.laporanHeaderConfig = lhMap;
@@ -428,7 +429,18 @@ function loadLaporanHeaderConfig() {
 function loadDefaultPrintLogo() {
   google.script.run.withSuccessHandler(res => {
     if (res.success) PLN_PRINT_LOGO = res.data;
+    ipgWarmPrintAssets();
   }).getDefaultPrintLogo();
+}
+/** Siapkan aset dokumen cetak di latar belakang (logo kop di cache browser + library QR termuat),
+    supaya dokumen pertama yang dicetak sudah lengkap. */
+const QRCODE_LIB_URL = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js';
+function ipgWarmPrintAssets() {
+  try {
+    const logo = (AppState.config && AppState.config.logoUrl) || PLN_PRINT_LOGO;
+    if (logo) { const im = new Image(); im.src = logo; }
+    if (typeof qrcode === 'undefined' && typeof loadScriptOnce === 'function') loadScriptOnce(QRCODE_LIB_URL).catch(() => {});
+  } catch (e) { /* hanya persiapan, abaikan bila gagal */ }
 }
 let notifApprovalItems = [];
 function loadNotifikasiApproval() {
@@ -2863,12 +2875,39 @@ function openPrintDocument(bodyHtml, existingWin) {
       body { font-family: 'Segoe UI', Arial, sans-serif; color:#1A2333; font-size:12.5px; }
       table { font-size:11.5px; }
       .print-only-tip { background:#FFF6E0; border:1px solid #FFC107; border-radius:6px; padding:8px 12px; margin-bottom:14px; font-size:11.5px; color:#7A5B00; }
-      @media print { .print-only-tip { display:none; } }
+      @media print { .print-only-tip, #ipgPrintPrep { display:none; } }
+      #ipgPrintPrep { position:sticky; top:0; background:#023B4A; color:#F7E82E; font-weight:700; font-size:12px;
+                      padding:8px 12px; border-radius:6px; margin-bottom:10px; z-index:10; }
     </style></head>
     <body>
+      <div id="ipgPrintPrep">⏳ Menyiapkan dokumen (logo &amp; QR)…</div>
       <div class="print-only-tip">💡 Supaya hasil cetak bersih (tanpa tulisan "about:blank" & tanggal di pojok kertas), buka <b>"More settings"</b> di jendela cetak ini lalu matikan centang <b>"Headers and footers"</b>.</div>
       ${bodyHtml}
-      <script>window.print();<\/script>
+      <script>
+        // Cetak baru dipanggil SETELAH semua gambar (logo kop & QR) selesai dimuat & digambar — dulu print()
+        // dipanggil seketika sehingga logo/QR kosong pada pembukaan pertama. Batas tunggu 10 detik agar tidak macet.
+        (function () {
+          var selesai = false;
+          function cetak() {
+            if (selesai) return; selesai = true;
+            var prep = document.getElementById('ipgPrintPrep');
+            if (prep) prep.textContent = '✅ Dokumen siap. Bila jendela cetak tertutup, tekan Ctrl+P (atau menu ⋮ → Bagikan/Cetak di HP).';
+            requestAnimationFrame(function () { requestAnimationFrame(function () { setTimeout(function () { window.focus(); window.print(); }, 120); }); });
+          }
+          var imgs = Array.prototype.slice.call(document.images);
+          var tunggu = imgs.map(function (img) {
+            if (img.complete) {                               // sudah selesai: berhasil (tunggu digambar) atau gagal (lanjut)
+              return img.naturalWidth > 0 && img.decode ? img.decode().catch(function () {}) : Promise.resolve();
+            }
+            return new Promise(function (ok) {
+              img.addEventListener('load', function () { (img.decode ? img.decode() : Promise.resolve()).then(ok, ok); });
+              img.addEventListener('error', ok);
+            });
+          });
+          Promise.all(tunggu).then(cetak);
+          setTimeout(cetak, 10000);
+        })();
+      <\/script>
     </body></html>`);
   w.document.close();
 }

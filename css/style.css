@@ -286,3 +286,21 @@ h1,h2,h3,h4,h5,h6 { font-family: 'Poppins', sans-serif; font-weight: 600; color:
   .stat-card { padding: .85rem; }
   .stat-value { font-size: 1.3rem; }
 }
+
+/* ── Tampilan HP: topbar selalu pas satu layar di SEMUA halaman (hasil diskusi lanjutan) ──
+   Di modul ada tombol ← Kembali (di Dashboard tidak), sehingga di HP ±360px isi topbar melebihi layar dan
+   tombol keluar terdorong keluar. Semua elemen tetap tampil; hanya jarak & ukuran dirapatkan di layar kecil. */
+.topbar { max-width: 100%; }
+.topbar-right { flex-shrink: 0; }                         /* tombol keluar dkk. tidak pernah terdorong keluar */
+.topbar-clock { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.main-content { min-width: 0; }
+.stat-card > div:last-child { min-width: 0; }              /* kartu angka tidak melebihi layar */
+.stat-value, .stat-label { overflow-wrap: anywhere; }
+@media (max-width: 575.98px) {
+  .topbar { gap: .3rem; padding: .55rem .5rem; }
+  .topbar .btn-icon { padding: .25rem .3rem; }
+  .topbar-right { gap: .3rem; }
+  .topbar-clock { font-size: .76rem; }
+  .user-chip { padding: .2rem .3rem; gap: .3rem; }
+  .user-avatar { width: 30px; height: 30px; }
+}
