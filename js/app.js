@@ -4099,6 +4099,18 @@ function loadAdministrasi() {
            <div class="col-md-4"><button class="btn btn-primary-ip w-100" onclick="saveEmailAdminTamu()"><i class="bi bi-check2"></i> Simpan</button></div>
          </div>
          <p class="section-sub mt-2 mb-0">Email berisi ringkasan pengajuan (format WA) dikirim otomatis ke alamat ini setiap ada pengajuan Izin Tamu Masuk baru.</p>
+         <hr class="my-3">
+         <label class="form-label mb-1">Tujuan Notifikasi Pengajuan Barang Keluar</label>
+         <div class="row g-2 align-items-end">
+           <div class="col-md-4"><label class="form-label small text-muted mb-1">Email SPS Keamanan</label>
+             <input type="text" class="form-control" id="cfgEmailBKSps" placeholder="sps@example.com" value="${AppState.config.emailBKSps || ''}"></div>
+           <div class="col-md-4"><label class="form-label small text-muted mb-1">Email TL Keamanan</label>
+             <input type="text" class="form-control" id="cfgEmailBKTl" placeholder="tl@example.com" value="${AppState.config.emailBKTl || ''}"></div>
+           <div class="col-md-4"><label class="form-label small text-muted mb-1">Email Admin</label>
+             <input type="text" class="form-control" id="cfgEmailBKAdmin" placeholder="admin@example.com" value="${AppState.config.emailBKAdmin || ''}"></div>
+           <div class="col-12"><button class="btn btn-primary-ip" onclick="saveEmailBarangKeluar()"><i class="bi bi-check2"></i> Simpan Email Barang Keluar</button></div>
+         </div>
+         <p class="section-sub mt-2 mb-0">Satu email berisi ringkasan pengajuan dan daftar barang dikirim otomatis ke alamat-alamat ini setiap ada pengajuan Barang Keluar baru. Satu kolom boleh berisi lebih dari satu alamat, dipisah koma. Kolom kosong dilewati.</p>
        </div>
        <div class="card-ip mb-3">
          <h6 class="mb-2"><i class="bi bi-telephone-forward"></i> Kontak Instansi Darurat</h6>
@@ -4281,6 +4293,30 @@ function saveUserRole(id) {
 function saveEmailAdminTamu() {
   const email = val('cfgEmailAdminTamu');
   callServer('setConfigValue', ['emailAdminTamu', email], 'Email notifikasi tersimpan.', () => { AppState.config.emailAdminTamu = email; }, 'Menyimpan...');
+}
+/** Simpan 3 penerima email pengajuan Barang Keluar. Alamat divalidasi dulu supaya salah ketik ketahuan sebelum tersimpan. */
+async function saveEmailBarangKeluar() {
+  const fields = [['emailBKSps', 'cfgEmailBKSps', 'SPS Keamanan'], ['emailBKTl', 'cfgEmailBKTl', 'TL Keamanan'], ['emailBKAdmin', 'cfgEmailBKAdmin', 'Admin']];
+  const values = {};
+  for (const [key, id, label] of fields) {
+    const list = val(id).split(/[,;\s]+/).map(e => e.trim()).filter(Boolean);
+    const salah = list.filter(e => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e));
+    if (salah.length) { showToast('Periksa email', `Alamat ${label} tidak valid: ${salah.join(', ')}`, 'danger'); return; }
+    values[key] = list.join(', ');
+  }
+  showSaving('Menyimpan...');
+  try {
+    for (const [key] of fields) {
+      const res = await gsRun('setConfigValue', key, values[key]);
+      if (!res || !res.success) throw new Error((res && res.message) || 'Gagal menyimpan.');
+      AppState.config[key] = values[key];
+    }
+    hideSaving();
+    showToast('Berhasil', 'Email notifikasi Barang Keluar tersimpan.', 'success');
+  } catch (e) {
+    hideSaving();
+    showToast('Gagal', e.message, 'danger');
+  }
 }
 function saveEmergencyEmails() {
   const polresPhone = val('cfgPhonePolres'), bpbdPhone = val('cfgPhoneBpbd'), damkarPhone = val('cfgPhoneDamkar');
