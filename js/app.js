@@ -3519,7 +3519,7 @@ function submitPetaStatisForm(evt, editId) {
 // ════════════════════════════════════════════════════════
 function canManageContent() { return ['ADMIN','TL_KEAMANAN','SPS_KEAMANAN'].includes(AppState.user.Role); }
 
-const KLASIFIKASI_SOP = ['Prosedur', 'Instruksi Kerja (IK)', 'Rencana Pengamanan', 'Rencana Kontijensi', 'Kebijakan', 'Program Kerja'];
+const KLASIFIKASI_SOP = ['Prosedur', 'Instruksi Kerja (IK)', 'Rencana Pengamanan', 'Kebijakan', 'Program Kerja', 'Tutorial'];
 let sopAllRows = [];
 let sopFilters = { search: '', klasifikasi: '', tahun: '', status: '', tab: 'Semua' };
 
