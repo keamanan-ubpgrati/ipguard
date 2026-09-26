@@ -1114,9 +1114,9 @@ function loadMutasiJaga() {
     renderMutasiJagaDashboard(res.data || []);
     renderGenericTable('tblMutasiJaga',
       [ {label:'Nomor BA', key:'NoBA'},
-        {label:'Tanggal', render:r=>(r.Tanggal||'').slice(0,10)},
-        {label:'Jam', render:r=>jamRangeFromSectionA(r.SectionA_Jurnal)},
-        {label:'Pos', key:'PosJaga'}, {label:'Shift', key:'Shift'}, {label:'Regu', key:'Regu'},
+        {label:'Tanggal', render:r=>`<span class="text-nowrap">${(r.Tanggal||'').slice(0,10)}</span>`},
+        {label:'Jam', render:r=>`<span class="text-nowrap">${jamRangeFromSectionA(r.SectionA_Jurnal)}</span>`},
+        {label:'Pos', render:r=>`<span class="text-nowrap">${r.PosJaga||'-'}</span>`}, {label:'Shift', key:'Shift'}, {label:'Regu', key:'Regu'},
         {label:'Danru Lama → Baru', render:r=>`${r.DanruLamaBy || '-'} → ${r.DanruBaruBy || '-'}`},
         {label:'Temuan (Sec D)', render: r => r.SectionD_Temuan ? `<span class="pill pill-danger">Ada</span>` : `<span class="pill pill-neutral">Nihil</span>`},
         {label:'Status', render: r => statusPill(r.StatusApproval)} ],
@@ -4551,13 +4551,14 @@ let koreksiTitikPatroli = [];
 
 /** Gabungkan tombol aksi modul dengan tombol Edit/Batalkan khusus Admin */
 function withKoreksi(sheet, row, base) {
-  if (!isAdminIpg()) return base || '-';
+  const dasar = base && base !== '-' ? base : '';
+  // Baris 1: aksi modul (cetak, verifikasi/approve). Baris 2: Edit & Batalkan khusus Admin.
+  if (!isAdminIpg()) return dasar ? `<div class="aksi-wrap"><div class="aksi-row">${dasar}</div></div>` : '-';
   (KOREKSI_ROWS[sheet] = KOREKSI_ROWS[sheet] || {})[row.ID] = row;
-  const tanda = row.DikoreksiOleh ? `<div class="small text-muted mt-1" title="Dikoreksi ${escHtmlIpg(row.DikoreksiOleh)} ${escHtmlIpg(String(row.DikoreksiAt || '').slice(0, 16))}"><i class="bi bi-pencil-square"></i> dikoreksi</div>` : '';
-  return `${base && base !== '-' ? base : ''}<span class="d-inline-flex gap-1">`
-    + `<button class="btn btn-outline-ip btn-sm-ip" title="Edit (Admin)" onclick="openKoreksiForm('${sheet}','${row.ID}')"><i class="bi bi-pencil"></i></button>`
-    + `<button class="btn btn-outline-ip btn-sm-ip" style="color:#E53935;border-color:#E53935;" title="Batalkan (Admin)" onclick="openBatalkanModal('${sheet}','${row.ID}')"><i class="bi bi-x-octagon"></i></button>`
-    + `</span>${tanda}`;
+  const tanda = row.DikoreksiOleh ? `<span class="aksi-tanda" title="Dikoreksi ${escHtmlIpg(row.DikoreksiOleh)} ${escHtmlIpg(String(row.DikoreksiAt || '').slice(0, 16))}"><i class="bi bi-pencil-square"></i> dikoreksi</span>` : '';
+  const admin = `<button class="btn btn-outline-ip btn-sm-ip" title="Edit (Admin)" onclick="openKoreksiForm('${sheet}','${row.ID}')"><i class="bi bi-pencil"></i></button>`
+    + `<button class="btn btn-outline-ip btn-sm-ip aksi-batal" title="Batalkan (Admin)" onclick="openBatalkanModal('${sheet}','${row.ID}')"><i class="bi bi-x-octagon"></i></button>` + tanda;
+  return `<div class="aksi-wrap">${dasar ? `<div class="aksi-row">${dasar}</div>` : ''}<div class="aksi-row">${admin}</div></div>`;
 }
 
 function koreksiNilai_(row, f) {

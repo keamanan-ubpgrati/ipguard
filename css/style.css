@@ -317,3 +317,11 @@ h1,h2,h3,h4,h5,h6 { font-family: 'Poppins', sans-serif; font-weight: 600; color:
 
 /* Pesan konfirmasi boleh berisi baris baru (mis. peringatan data ganda) */
 #confirmModalBody { white-space: pre-line; }
+
+/* Kolom Aksi: maksimal 2 baris rapi — baris 1 aksi modul, baris 2 Edit/Batalkan Admin */
+.aksi-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: .35rem; }
+.aksi-row { display: flex; flex-wrap: nowrap; align-items: center; gap: .35rem; }
+.aksi-row .btn { white-space: nowrap; }
+.aksi-batal { color: #E53935 !important; border-color: #E53935 !important; }
+.aksi-batal:hover { background: #FDE8E8 !important; }
+.aksi-tanda { font-size: .72rem; color: var(--text-muted, #6B7A90); white-space: nowrap; }
