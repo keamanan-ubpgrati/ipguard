@@ -44,8 +44,13 @@ const MENU = [
   { group: 'PENGATURAN', items: [
     { id: 'masterData', label: 'Master Data', icon: 'bi-collection', roles: ['ADMIN','TL_KEAMANAN','SPS_KEAMANAN'], aliases: ['master','personel','pos','titik'] },
     { id: 'administrasi', label: 'Administrasi Akun', icon: 'bi-gear', roles: ['ADMIN'], aliases: ['admin','akun','user'] },
+  ]},
+  { group: 'LAINNYA', items: [
+    { id: 'tentang', label: 'Tentang Aplikasi', icon: 'bi-info-circle', roles: 'ALL', aliases: ['tentang','versi','apk','download','unduh aplikasi','bagikan'] },
   ]}
 ];
+/** Versi tampilan/fitur — dinaikkan di setiap paket update frontend */
+const IPG_VERSI = '3.1 · 2026.09.26';
 
 const ROLE_LABEL = {
   ADMIN: 'Admin', SPS_KEAMANAN: 'SPS Keamanan', TL_KEAMANAN: 'TL Keamanan', SATPAM: 'Satpam',
@@ -629,7 +634,8 @@ const SECTION_TITLES = {
   izinTamu: 'Izin Tamu Masuk', kendaraan: 'Izin Kendaraan Masuk A',
   barangKeluar: 'Pengajuan Barang Keluar', incident: 'Incident & Gangguan Keamanan',
   kta: 'KTA Monitoring', petaKeamanan: 'Peta Keamanan', sopCenter: 'SOP Center',
-  awarenessCenter: 'Awareness Center', masterData: 'Master Data', administrasi: 'Administrasi Akun'
+  awarenessCenter: 'Awareness Center', masterData: 'Master Data', administrasi: 'Administrasi Akun',
+  tentang: 'Tentang Aplikasi'
 };
 
 function navigateTo(sectionId, fromHistory) {
@@ -639,7 +645,8 @@ function navigateTo(sectionId, fromHistory) {
     dashboard: loadDashboard, mutasiJaga: loadMutasiJaga, checklistSarpras: loadChecklistSarpras,
     patroli: loadPatroli, izinTamu: loadIzinTamu, kendaraan: loadKendaraan, barangKeluar: loadBarangKeluar,
     incident: loadIncident, kta: loadKta, petaKeamanan: loadPetaKeamanan, sopCenter: loadSopCenter,
-    awarenessCenter: loadAwareness, teleponPenting: loadTeleponPenting, masterData: loadMasterData, administrasi: loadAdministrasi
+    awarenessCenter: loadAwareness, teleponPenting: loadTeleponPenting, masterData: loadMasterData, administrasi: loadAdministrasi,
+    tentang: loadTentang
   };
   (loaders[sectionId] || (() => {}))();
   // Catat ke history browser (kecuali kalau navigasi ini memang DIPICU oleh tombol back/forward browser
@@ -4703,4 +4710,114 @@ function loadDataDibatalkan() {
       (Array.isArray(res.data) ? res.data : []).sort((a, b) => String(b.DibatalkanAt).localeCompare(String(a.DibatalkanAt))),
       row => `<button class="btn btn-outline-ip btn-sm-ip" onclick="callServer('pulihkanRecord',['${sheet}','${row.ID}',AppState.user.Nama],null,loadDataDibatalkan,'Memulihkan...')"><i class="bi bi-arrow-counterclockwise"></i> Pulihkan</button>`);
   }).withFailureHandler(e => { wrap.innerHTML = `<div class="small text-danger">${escHtmlIpg(e.message)}</div>`; }).getDataDibatalkan(sheet);
+}
+
+
+// ════════════════════════════════════════════════════════
+// TENTANG APLIKASI — info versi + unduh & bagikan APK (link diatur Admin di sini)
+// ════════════════════════════════════════════════════════
+function ipgModeBuka() {
+  const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone;
+  if (String(document.referrer || '').indexOf('android-app://') === 0) return 'Aplikasi Android (APK)';
+  return standalone ? 'Aplikasi terpasang (APK/PWA)' : 'Browser';
+}
+function ipgAlamatWeb() { return location.origin + location.pathname.replace(/index\.html$/, ''); }
+
+function loadTentang() {
+  const c = document.getElementById('app-container');
+  const cfg = AppState.config || {};
+  const apkUrl = String(cfg.apkUrl || '').trim(), apkVersi = String(cfg.apkVersi || '').trim();
+  const baris = (label, nilai) => `<div class="d-flex justify-content-between gap-3 py-2" style="border-bottom:1px solid var(--border-subtle);">
+      <span class="text-muted small">${label}</span><span class="fw-semibold small text-end">${nilai}</span></div>`;
+  const fitur = [
+    ['bi-arrow-left-right', 'Mutasi Jaga Pos', 'Jurnal pos tiap rolling & BA serah terima dengan approval berjenjang'],
+    ['bi-geo-alt', 'Patroli QR & GPS', 'Scan stiker QR atau verifikasi lokasi GPS di tiap titik patroli'],
+    ['bi-clipboard-check', 'Checklist Sarpras', 'Pemeriksaan sarana & prasarana per shift'],
+    ['bi-person-badge', 'Tamu, Kendaraan & Barang Keluar', 'Pengajuan online, approval, dan notifikasi email'],
+    ['bi-exclamation-triangle', 'Incident / Gangguan', 'Pelaporan kejadian beserta foto dan tindak lanjut'],
+    ['bi-journal-text', 'Pusat Informasi', 'SOP, tutorial, awareness, dan telepon penting'],
+    ['bi-file-earmark-arrow-down', 'Laporan', 'Semua laporan bisa diunduh dalam format PDF & Excel']
+  ];
+  c.innerHTML = sectionHeader('Tentang Aplikasi', 'Informasi versi, unduh APK Android, dan bagikan aplikasi ke rekan kerja')
+    + `<div class="row g-3">
+      <div class="col-lg-7">
+        <div class="card-ip mb-3">
+          <div class="d-flex align-items-center gap-3 mb-3">
+            <img src="icons/icon-192.png" alt="IP GUARD" style="width:72px;height:72px;border-radius:18px;flex-shrink:0;">
+            <div>
+              <h4 class="mb-0" style="font-weight:800;">IP GUARD V3</h4>
+              <div class="text-muted small">Sistem Manajemen Pengamanan</div>
+              <div class="small fw-semibold" style="color:var(--primary);">${escHtmlIpg(cfg.namaUnit || 'PT PLN Indonesia Power UBP Grati')}</div>
+            </div>
+          </div>
+          <p class="small mb-3">IP GUARD membantu Unit Keamanan mencatat dan memantau seluruh kegiatan pengamanan secara digital — dari serah terima jaga, patroli, kontrol akses tamu dan barang, sampai pelaporan incident — sehingga data tersimpan rapi, bisa dipantau langsung, dan laporan siap diunduh kapan saja.</p>
+          ${baris('Versi aplikasi', escHtmlIpg(IPG_VERSI))}
+          ${baris('Versi APK terbaru', apkVersi ? escHtmlIpg(apkVersi) : '<span class="text-muted">-</span>')}
+          ${baris('Dibuka sebagai', escHtmlIpg(ipgModeBuka()))}
+          ${baris('Alamat web', `<a href="${escHtmlIpg(ipgAlamatWeb())}" target="_blank">${escHtmlIpg(ipgAlamatWeb().replace(/^https?:\/\//, ''))}</a>`)}
+          ${baris('Pengguna', `${escHtmlIpg(AppState.user.Nama || '-')} · ${escHtmlIpg(ROLE_LABEL[AppState.user.Role] || AppState.user.Role || '-')}`)}
+        </div>
+        <div class="card-ip mb-3">
+          <h6 class="mb-2"><i class="bi bi-grid"></i> Fitur Utama</h6>
+          ${fitur.map(f => `<div class="d-flex gap-2 py-1"><i class="bi ${f[0]}" style="color:var(--primary);font-size:1.1rem;width:22px;"></i>
+            <div class="small"><b>${f[1]}</b><div class="text-muted">${f[2]}</div></div></div>`).join('')}
+        </div>
+      </div>
+      <div class="col-lg-5">
+        <div class="card-ip mb-3">
+          <h6 class="mb-2"><i class="bi bi-android2"></i> Aplikasi Android</h6>
+          ${apkUrl
+            ? `<a class="btn btn-primary-ip w-100 mb-2" href="${escHtmlIpg(apkUrl)}" target="_blank" rel="noopener"><i class="bi bi-download"></i> Download APK${apkVersi ? ' v' + escHtmlIpg(apkVersi) : ''}</a>`
+            : `<button class="btn btn-primary-ip w-100 mb-2" disabled><i class="bi bi-download"></i> Download APK</button>
+               <div class="small text-muted mb-2">Link APK belum diatur. Hubungi Admin.</div>`}
+          <button class="btn btn-outline-ip w-100 mb-3" onclick="bagikanAplikasi()"><i class="bi bi-share"></i> Bagikan ke Rekan</button>
+          <div class="small fw-semibold mb-1">Cara pasang APK</div>
+          <ol class="small ps-3 mb-2">
+            <li>Ketuk <b>Download APK</b>, lalu unduh file dari Google Drive.</li>
+            <li>Buka file <b>.apk</b> di folder Download.</li>
+            <li>Bila diminta, izinkan <b>Pasang aplikasi tidak dikenal</b> untuk aplikasi tersebut.</li>
+            <li>Ketuk <b>Instal</b> (atau <b>Update</b> bila versi lama sudah terpasang).</li>
+          </ol>
+          <div class="small text-muted">Tampilan & fitur selalu mengikuti versi terbaru secara otomatis. APK baru hanya perlu dipasang ulang bila ada pengumuman dari Admin.</div>
+        </div>
+        ${isAdminIpg() ? `<div class="card-ip mb-3">
+          <h6 class="mb-2"><i class="bi bi-gear"></i> Pengaturan APK <span class="pill pill-neutral ms-1">Admin</span></h6>
+          <label class="form-label small mb-1">Link unduh APK (Google Drive)</label>
+          <input type="url" class="form-control mb-2" id="cfgApkUrl" placeholder="https://drive.google.com/file/d/…" value="${escHtmlIpg(apkUrl)}">
+          <label class="form-label small mb-1">Versi APK</label>
+          <input type="text" class="form-control mb-2" id="cfgApkVersi" placeholder="contoh: 1.0.1" value="${escHtmlIpg(apkVersi)}">
+          <p class="section-sub mb-2">Pastikan akses file di Google Drive diatur <b>"Siapa saja yang memiliki link"</b>. Saat APK diperbarui, pakai <b>Kelola versi</b> di Drive agar link tetap sama, lalu ubah Versi APK di sini.</p>
+          <button class="btn btn-primary-ip" onclick="simpanPengaturanApk()"><i class="bi bi-check2"></i> Simpan</button>
+        </div>` : ''}
+      </div>
+    </div>`;
+}
+
+function bagikanAplikasi() {
+  const cfg = AppState.config || {};
+  const apkUrl = String(cfg.apkUrl || '').trim();
+  const teks = 'IP GUARD V3 — Sistem Manajemen Pengamanan PT PLN Indonesia Power UBP Grati\n\n'
+    + (apkUrl ? `Download APK Android${cfg.apkVersi ? ' (v' + cfg.apkVersi + ')' : ''}:\n${apkUrl}\n\n` : '')
+    + `Atau buka lewat browser:\n${ipgAlamatWeb()}`;
+  if (navigator.share) {
+    navigator.share({ title: 'IP GUARD V3', text: teks }).catch(() => {});
+  } else {
+    window.open('https://wa.me/?text=' + encodeURIComponent(teks), '_blank');
+  }
+}
+
+async function simpanPengaturanApk() {
+  const url = val('cfgApkUrl').trim(), versi = val('cfgApkVersi').trim();
+  if (url && !/^https:\/\//i.test(url)) { showToast('Periksa link', 'Link APK harus diawali https://', 'danger'); return; }
+  showSaving('Menyimpan...');
+  try {
+    for (const [k, v] of [['apkUrl', url], ['apkVersi', versi]]) {
+      const res = await gsRun('setConfigValue', k, v);
+      if (!res || !res.success) throw new Error((res && res.message) || 'Gagal menyimpan.');
+      AppState.config[k] = v;
+    }
+    hideSaving();
+    showToast('Berhasil', 'Pengaturan APK tersimpan.', 'success');
+    loadTentang();
+  } catch (e) { hideSaving(); showToast('Gagal', e.message, 'danger'); }
 }
