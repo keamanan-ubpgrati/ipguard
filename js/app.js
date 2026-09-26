@@ -473,6 +473,12 @@ function toggleNotifDropdown() {
   if (showing) { dd.style.display = 'none'; return; }
   loadNotifikasiApproval(); // refresh tiap dibuka
   renderNotifDropdown();
+  // Di HP: panel dibuat selebar layar tepat di bawah topbar, supaya tidak terpotong di sisi kiri
+  const btnBawah = document.getElementById('notifBtn').getBoundingClientRect().bottom;
+  const tbBawah = document.querySelector('.topbar')?.getBoundingClientRect().bottom || 0;
+  const dasar = (tbBawah > 0 && tbBawah < window.innerHeight * 0.3) ? tbBawah : btnBawah;
+  const notifTop = Math.min(Math.max(dasar + 6, 8), window.innerHeight * 0.4);
+  dd.style.setProperty('--notif-top', Math.round(notifTop) + 'px');
   dd.style.display = 'block';
   setTimeout(() => document.addEventListener('click', closeNotifDropdownOutside), 0);
 }
@@ -781,6 +787,11 @@ function callServer(fnName, args, successMsg, afterFn, savingMsg) {
     .withSuccessHandler(res => {
       hideSaving();
       if (res.success) { showToast('Berhasil', successMsg || res.message, 'success'); if (afterFn) afterFn(res); }
+      else if (res.data && res.data.duplikat && args[0] && typeof args[0] === 'object') {
+        // Server menemukan data serupa → tanya dulu, kirim ulang dengan abaikanDuplikat bila tetap ingin disimpan
+        openConfirmModal('⚠ Kemungkinan data ganda\n\n' + res.message + '\n\nTetap simpan data ini?', () =>
+          callServer(fnName, [Object.assign({}, args[0], { abaikanDuplikat: true })].concat(args.slice(1)), successMsg, afterFn, savingMsg));
+      }
       else showToast('Gagal', res.message, 'danger');
     })
     .withFailureHandler(err => { hideSaving(); showToast('Error', err.message, 'danger'); })
@@ -1110,7 +1121,7 @@ function loadMutasiJaga() {
         {label:'Temuan (Sec D)', render: r => r.SectionD_Temuan ? `<span class="pill pill-danger">Ada</span>` : `<span class="pill pill-neutral">Nihil</span>`},
         {label:'Status', render: r => statusPill(r.StatusApproval)} ],
       (res.data||[]).sort((a,b)=> new Date(b.WaktuInput)-new Date(a.WaktuInput)),
-      row => mutasiJagaActions(row)
+      row => withKoreksi('MUTASI_JAGA', row, mutasiJagaActions(row))
     );
   }).getAllData('MUTASI_JAGA');
 }
@@ -1274,7 +1285,7 @@ function renderJurnalListTable() {
       {label:'Petugas', render:r=>`${r.PetugasLama} → ${r.PetugasBaru}`},
       {label:'Kondisi', render:r=> kondisiJurnalPill(r.Kondisi)},
       {label:'Catatan', key:'Catatan'} ],
-    rows
+    rows, isAdminIpg() ? (row => withKoreksi('JURNAL_POS', row, '')) : undefined
   );
 }
 function onJurnalListTanggalChange() {
@@ -1735,7 +1746,7 @@ function loadPatroli() {
         {label:'Jml Titik Discan', render:r=>{ try{return JSON.parse(r.TitikEntries||'[]').length;}catch(e){return 0;} }},
         {label:'Status', render:r=>statusPill(r.StatusApproval)} ],
       (res.data||[]).sort((a,b)=> new Date(b.WaktuInput)-new Date(a.WaktuInput)),
-      row => rekapPatroliActions(row)
+      row => withKoreksi('REKAP_PATROLI', row, rekapPatroliActions(row))
     );
   }).getAllData('REKAP_PATROLI');
 }
@@ -1862,7 +1873,7 @@ function renderLogPatroliTable() {
       {label:'Titik Patroli', key:'TitikPatroli'}, {label:'Metode', render:r=>patroliMetodePill(r.Metode)},
       {label:'Jarak', render:r=> r.JarakMeter!=='' && r.JarakMeter!==undefined ? `${r.JarakMeter} m` : '-'},
       {label:'Status', render:r=> patroliStatusPill(r.StatusVerifikasi)} ],
-    rows
+    rows, isAdminIpg() ? (row => withKoreksi('LOG_PATROLI', row, '')) : undefined
   );
 }
 /** Status log patroli: On Site / On Site (QR) = hijau, Perlu Cek = kuning, Off Site = merah */
@@ -2681,7 +2692,7 @@ function renderBarangKeluarTable() {
       {label:'Status', render:r=>statusPill(r.Status) + alasanTolakHtml(r)},
       {label:'Cetak', render:r => !['Diajukan','Ditolak'].includes(r.Status) ? `<button class="btn btn-outline-ip btn-sm-ip" onclick="cetakSuratBarang('${r.NoSurat}')"><i class="bi bi-printer"></i></button>` : '-' } ],
     rows.sort((a,b)=> (b.NoSurat||'').localeCompare(a.NoSurat||'')),
-    row => barangKeluarActions(row)
+    row => withKoreksi('BARANG_KELUAR', row, barangKeluarActions(row))
   );
 }
 function renderBarangKeluarDashboard(rows) {
@@ -2788,12 +2799,7 @@ function submitBarangKeluarForm(evt) {
     jenisKendaraan: val('bkJenisKendaraan'), warnaKendaraan: val('bkWarnaKendaraan'), nomorPolisi: val('bkNomorPolisi'), tujuan: val('bkTujuan'),
     items, createdBy: AppState.user.Nama };
   closeFormModal();
-  showSaving('Menerbitkan nomor surat...');
-  google.script.run.withSuccessHandler(res => {
-    hideSaving();
-    if (res.success) { showToast('Berhasil', res.message, 'success'); loadBarangKeluar(); }
-    else showToast('Gagal', res.message, 'danger');
-  }).withFailureHandler(e=>{hideSaving();showToast('Error',e.message,'danger');}).ajukanBarangKeluar(payload);
+  callServer('ajukanBarangKeluar', [payload], null, loadBarangKeluar, 'Menerbitkan nomor surat...');
   return false;
 }
 // ════════════════════════════════════════════════════════
@@ -3101,7 +3107,7 @@ function renderIncidentTable() {
       {label:'Tindak Lanjut', render:r=>r.TindakLanjut||'-'}, {label:'PIC Tindak Lanjut', render:r=>r.PICTindakLanjut||'-'},
       {label:'Status', render:r=>statusPill(r.Status)} ],
     rows.sort((a,b)=> new Date(b.TanggalJam)-new Date(a.TanggalJam)),
-    row => incidentActions(row)
+    row => withKoreksi('INCIDENT', row, incidentActions(row))
   );
 }
 function incidentActions(row) {
@@ -4193,7 +4199,17 @@ function loadAdministrasi() {
          <p class="section-sub mb-3">Centang menu mana yang boleh diakses tiap role. Alur approval bertahap (Danru → TL Keamanan, dst.) tetap mengikuti aturan sistem, tidak diatur di sini.</p>
          <div id="tblRoleAccess"><div class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></div></div>
        </div>
+       <div class="card-ip mb-3">
+         <h6 class="mb-1"><i class="bi bi-archive"></i> Data Dibatalkan</h6>
+         <p class="section-sub mb-2">Data yang dibatalkan Admin disembunyikan dari tabel, laporan, dan dashboard, tetapi tetap tersimpan dan bisa dipulihkan.</p>
+         <div class="d-flex gap-2 mb-2 flex-wrap">
+           <select class="form-select" id="batalModul" style="max-width:260px;" onchange="loadDataDibatalkan()">
+             ${Object.keys(KOREKSI_FORM).map(k => `<option value="${k}">${KOREKSI_FORM[k].judul}</option>`).join('')}</select>
+         </div>
+         <div id="tblDataDibatalkan"></div>
+       </div>
        <div id="tblUsers"></div>`;
+  loadDataDibatalkan();
   loadLaporanHeaderTable();
   loadRoleAccessTable();
   google.script.run.withSuccessHandler(res => {
@@ -4487,4 +4503,203 @@ function cetakBAMutasiJaga(id) {
       ], `BA Mutasi Jaga No. ${r.NoBA}`);
     openPrintDocument(body);
   }).withFailureHandler(e=>showToast('Error',e.message,'danger')).getAllData('MUTASI_JAGA');
+}
+
+
+// ════════════════════════════════════════════════════════
+// KOREKSI DATA OLEH ADMIN — Edit & Batalkan (bukan hapus), Pulihkan
+// Edit pada data yang sudah disetujui → approval diulang dari awal (diatur server)
+// ════════════════════════════════════════════════════════
+function isAdminIpg() { return AppState.user && AppState.user.Role === 'ADMIN'; }
+const KOREKSI_ROWS = {};
+const KOREKSI_FORM = {
+  JURNAL_POS: { judul: 'Jurnal Pos', reload: () => loadJurnalList(), fields: [
+    { k: 'Tanggal', t: 'date' }, { k: 'TanggalDinas', t: 'date', label: 'Tanggal Dinas (Malam: tanggal pagi selesainya)' },
+    { k: 'RollingKe', t: 'select', opts: ['1', '2', '3', '4'], label: 'Rolling ke' }, { k: 'Shift', t: 'select', opts: () => OPT_SHIFT },
+    { k: 'Regu', t: 'select', opts: () => OPT_REGU }, { k: 'PosJaga', t: 'select', opts: () => OPT_POS, label: 'Pos Jaga' },
+    { k: 'PetugasLama', t: 'text', label: 'Petugas Lama' }, { k: 'PetugasBaru', t: 'text', label: 'Petugas Baru' },
+    { k: 'Kondisi', t: 'select', opts: ['Aman', 'Waspada', 'Bahaya'] }, { k: 'Catatan', t: 'textarea' }] },
+  MUTASI_JAGA: { judul: 'BA Mutasi Jaga', reload: () => loadMutasiJaga(), status: r => r.StatusApproval, awal: 'Menunggu Danru Lama', fields: [
+    { k: 'Tanggal', t: 'date' }, { k: 'TanggalDinas', t: 'date', label: 'Tanggal Dinas' }, { k: 'Shift', t: 'select', opts: () => OPT_SHIFT },
+    { k: 'PosJaga', t: 'select', opts: () => OPT_POS, label: 'Pos Jaga' }, { k: 'Regu', t: 'select', opts: () => OPT_REGU },
+    { k: 'SectionB', t: 'sectionB', label: 'Section B — Kondisi Pos' }, { k: 'SectionC', t: 'sectionC', label: 'Section C — Inventaris' },
+    { k: 'SectionD_Temuan', t: 'textarea', label: 'Section D — Temuan & Anomali' }, { k: 'SectionE_Catatan', t: 'textarea', label: 'Section E — Catatan Operasional' }] },
+  LOG_PATROLI: { judul: 'Log Patroli', reload: () => loadLogPatroliList(), fields: [
+    { k: 'Tanggal', t: 'date' }, { k: 'TanggalDinas', t: 'date', label: 'Tanggal Dinas' }, { k: 'Putaran', t: 'select', opts: ['1', '2', '3', '4', '5', '6'] },
+    { k: 'Shift', t: 'select', opts: () => OPT_SHIFT }, { k: 'Regu', t: 'select', opts: () => OPT_REGU },
+    { k: 'TitikPatroli', t: 'select', opts: () => koreksiTitikPatroli, label: 'Titik Patroli' }] },
+  REKAP_PATROLI: { judul: 'Rekap Patroli', reload: () => loadPatroli(), status: r => r.StatusApproval, awal: 'Menunggu Danru', fields: [
+    { k: 'Tanggal', t: 'date' }, { k: 'TanggalDinas', t: 'date', label: 'Tanggal Dinas' }, { k: 'Shift', t: 'select', opts: () => OPT_SHIFT },
+    { k: 'Regu', t: 'select', opts: () => OPT_REGU }, { k: 'CatatanTemuan', t: 'textarea', label: 'Catatan Temuan' }] },
+  BARANG_KELUAR: { judul: 'Barang Keluar', reload: () => loadBarangKeluar(), status: r => r.Status, awal: 'Diajukan', fields: [
+    { k: 'Tanggal', t: 'date' }, { k: 'Kategori', t: 'select', opts: () => KATEGORI_BARANG_KELUAR }, { k: 'DiserahkanKepada', t: 'text', label: 'Diserahkan Kepada' },
+    { k: 'SPSBidangPemohon', t: 'text', label: 'SPS Bidang Pemohon' }, { k: 'JabatanPemohon', t: 'text', label: 'Jabatan Pemohon' },
+    { k: 'PelaksanaNama', t: 'text', label: 'Nama Pelaksana' }, { k: 'PelaksanaNoInduk', t: 'text', label: 'No. Induk Pelaksana' },
+    { k: 'PelaksanaJabatan', t: 'text', label: 'Jabatan Pelaksana' }, { k: 'PelaksanaPerusahaan', t: 'text', label: 'Perusahaan Pelaksana' },
+    { k: 'PelaksanaTelepon', t: 'text', label: 'Telepon Pelaksana' }, { k: 'PelaksanaAlamat', t: 'text', label: 'Alamat Pelaksana' },
+    { k: 'PengemudiNama', t: 'text', label: 'Nama Pengemudi' }, { k: 'PengemudiAlamatRumah', t: 'text', label: 'Alamat Pengemudi' },
+    { k: 'JenisKendaraan', t: 'text', label: 'Jenis Kendaraan' }, { k: 'WarnaKendaraan', t: 'text', label: 'Warna Kendaraan' },
+    { k: 'NomorPolisi', t: 'text', label: 'Nomor Polisi' }, { k: 'Tujuan', t: 'text' }, { k: 'ItemsJSON', t: 'items', label: 'Daftar Barang' }] },
+  INCIDENT: { judul: 'Incident', reload: () => loadIncident(), fields: [
+    { k: 'TanggalJam', t: 'datetime', label: 'Tanggal & Jam' }, { k: 'Lokasi', t: 'text' }, { k: 'Kategori', t: 'select', opts: () => KATEGORI_INCIDENT },
+    { k: 'TingkatRisiko', t: 'select', opts: ['Rendah', 'Sedang', 'Tinggi'], label: 'Tingkat Risiko' },
+    { k: 'Regu', t: 'select', opts: () => ['-'].concat(OPT_REGU) }, { k: 'Shift', t: 'select', opts: () => ['-'].concat(OPT_SHIFT) },
+    { k: 'Pelapor', t: 'text' }, { k: 'UraianKejadian', t: 'textarea', label: 'Uraian Kejadian' },
+    { k: 'TindakLanjut', t: 'textarea', label: 'Tindak Lanjut' }, { k: 'PICTindakLanjut', t: 'text', label: 'PIC Tindak Lanjut' }] }
+};
+let koreksiTitikPatroli = [];
+
+/** Gabungkan tombol aksi modul dengan tombol Edit/Batalkan khusus Admin */
+function withKoreksi(sheet, row, base) {
+  if (!isAdminIpg()) return base || '-';
+  (KOREKSI_ROWS[sheet] = KOREKSI_ROWS[sheet] || {})[row.ID] = row;
+  const tanda = row.DikoreksiOleh ? `<div class="small text-muted mt-1" title="Dikoreksi ${escHtmlIpg(row.DikoreksiOleh)} ${escHtmlIpg(String(row.DikoreksiAt || '').slice(0, 16))}"><i class="bi bi-pencil-square"></i> dikoreksi</div>` : '';
+  return `${base && base !== '-' ? base : ''}<span class="d-inline-flex gap-1">`
+    + `<button class="btn btn-outline-ip btn-sm-ip" title="Edit (Admin)" onclick="openKoreksiForm('${sheet}','${row.ID}')"><i class="bi bi-pencil"></i></button>`
+    + `<button class="btn btn-outline-ip btn-sm-ip" style="color:#E53935;border-color:#E53935;" title="Batalkan (Admin)" onclick="openBatalkanModal('${sheet}','${row.ID}')"><i class="bi bi-x-octagon"></i></button>`
+    + `</span>${tanda}`;
+}
+
+function koreksiNilai_(row, f) {
+  const v = row[f.k];
+  if (f.t === 'date') return String(v || '').slice(0, 10);
+  if (f.t === 'datetime') return String(v || '').slice(0, 16).replace(' ', 'T');
+  if (f.t === 'sectionC') { try { return (JSON.parse(v || '{}').catatan) || ''; } catch (e) { return String(v || ''); } }
+  return v === undefined || v === null ? '' : String(v);
+}
+function koreksiInput_(row, f) {
+  const id = 'kf_' + f.k, label = f.label || f.k, val0 = koreksiNilai_(row, f);
+  const lebar = ['textarea', 'sectionB', 'items', 'sectionC'].includes(f.t) ? 'col-12' : 'col-md-6';
+  let input;
+  if (f.t === 'select') {
+    let opts = (typeof f.opts === 'function' ? f.opts() : f.opts) || [];
+    if (val0 && !opts.map(String).includes(val0)) opts = [val0].concat(opts);
+    input = `<select class="form-select" id="${id}">${opts.map(o => `<option ${String(o) === val0 ? 'selected' : ''}>${escHtmlIpg(o)}</option>`).join('')}</select>`;
+  } else if (f.t === 'textarea' || f.t === 'sectionC') {
+    input = `<textarea class="form-control" id="${id}" rows="2">${escHtmlIpg(val0)}</textarea>`;
+  } else if (f.t === 'sectionB') {
+    let items = []; try { items = JSON.parse(row.SectionB || '[]'); } catch (e) {}
+    input = items.length ? `<div class="table-responsive-ip"><table class="table-ip"><thead><tr><th>Item</th><th>Kondisi</th><th>Keterangan</th></tr></thead><tbody>${items.map(it => {
+      const def = (SECTION_B_ITEMS.find(x => x.name === it.item) || { opts: ['Baik', 'Rusak', 'Kadaluarsa'] }).opts;
+      const opts = def.includes(it.kondisi) ? def : [it.kondisi].concat(def);
+      return `<tr><td class="kf-sb-item">${escHtmlIpg(it.item)}</td><td><select class="form-select form-select-sm kf-sb-kondisi">${opts.map(o => `<option ${o === it.kondisi ? 'selected' : ''}>${escHtmlIpg(o)}</option>`).join('')}</select></td>
+        <td><input class="form-control form-control-sm kf-sb-ket" value="${escHtmlIpg(it.keterangan || '')}"></td></tr>`; }).join('')}</tbody></table></div>`
+      : '<div class="small text-muted">Section B kosong pada BA ini.</div>';
+  } else if (f.t === 'items') {
+    let items = []; try { items = JSON.parse(row.ItemsJSON || '[]'); } catch (e) {}
+    input = `<div id="kfItemsWrap">${items.map(koreksiItemRow_).join('')}</div>
+      <button type="button" class="btn btn-outline-ip btn-sm-ip mt-1" onclick="document.getElementById('kfItemsWrap').insertAdjacentHTML('beforeend', koreksiItemRow_({}))"><i class="bi bi-plus"></i> Tambah barang</button>`;
+  } else {
+    const type = f.t === 'date' ? 'date' : f.t === 'datetime' ? 'datetime-local' : 'text';
+    input = `<input type="${type}" class="form-control" id="${id}" value="${escHtmlIpg(val0)}">`;
+  }
+  return `<div class="${lebar}"><label class="form-label small mb-1">${escHtmlIpg(label)}</label>${input}</div>`;
+}
+function koreksiItemRow_(it) {
+  return `<div class="row g-1 mb-1 kf-item" data-status="${escHtmlIpg(it.statusBarang || 'Menunggu')}">
+    <div class="col-5"><input class="form-control form-control-sm kf-it-nama" placeholder="Nama barang" value="${escHtmlIpg(it.namaBarang || '')}"></div>
+    <div class="col-2"><input class="form-control form-control-sm kf-it-jml" placeholder="Jml" value="${escHtmlIpg(it.jumlah || '')}"></div>
+    <div class="col-2"><input class="form-control form-control-sm kf-it-sat" placeholder="Satuan" value="${escHtmlIpg(it.satuan || '')}"></div>
+    <div class="col-2"><input class="form-control form-control-sm kf-it-ket" placeholder="Ket." value="${escHtmlIpg(it.keterangan || '')}"></div>
+    <div class="col-1"><button type="button" class="btn btn-outline-ip btn-sm-ip" title="Hapus baris" onclick="this.closest('.kf-item').remove()"><i class="bi bi-trash"></i></button></div></div>`;
+}
+
+async function openKoreksiForm(sheet, id) {
+  const cfg = KOREKSI_FORM[sheet], row = (KOREKSI_ROWS[sheet] || {})[id];
+  if (!cfg || !row) { showToast('Gagal', 'Data tidak ditemukan, muat ulang halaman.', 'danger'); return; }
+  if (sheet === 'LOG_PATROLI' && !koreksiTitikPatroli.length) {
+    try { const r = await gsRun('getAllData', 'MASTER_TITIK_PATROLI'); koreksiTitikPatroli = (r.data || []).map(t => t.NamaTitik).filter(Boolean); } catch (e) {}
+  }
+  const status = cfg.status ? cfg.status(row) : '';
+  const peringatan = cfg.status && status !== cfg.awal
+    ? `<div class="alert alert-warning small py-2"><i class="bi bi-exclamation-triangle"></i> Status saat ini <b>${escHtmlIpg(status)}</b>. Menyimpan perubahan akan <b>mengulang approval dari awal</b> (${escHtmlIpg(cfg.awal)}).</div>`
+    : (sheet === 'INCIDENT' ? '<div class="alert alert-info small py-2">Status penanganan incident tidak berubah saat diedit.</div>' : '');
+  const sinkron = sheet === 'MUTASI_JAGA'
+    ? `<div class="col-12"><div class="form-check"><input class="form-check-input" type="checkbox" id="kfSinkronA"><label class="form-check-label small" for="kfSinkronA">Ambil ulang <b>Section A</b> dari Jurnal Pos terkini (centang bila jurnalnya sudah dikoreksi/dibatalkan)</label></div></div>` : '';
+  openFormModal(`Edit ${cfg.judul} (Admin)`, `
+    <form onsubmit="return submitKoreksi(event,'${sheet}','${id}')">
+      ${peringatan}
+      <div class="row g-2">${cfg.fields.map(f => koreksiInput_(row, f)).join('')}${sinkron}
+        <div class="col-12"><label class="form-label small mb-1">Alasan koreksi <span class="text-danger">*</span></label>
+          <input class="form-control" id="kfAlasan" required maxlength="300" placeholder="Contoh: satpam salah pilih rolling"></div>
+      </div>
+      <div class="d-flex justify-content-end gap-2 mt-3">
+        <button type="button" class="btn btn-outline-ip" onclick="closeFormModal()">Batal</button>
+        <button type="submit" class="btn btn-primary-ip"><i class="bi bi-check2"></i> Simpan Koreksi</button>
+      </div>
+    </form>`);
+}
+
+function submitKoreksi(evt, sheet, id) {
+  evt.preventDefault();
+  const cfg = KOREKSI_FORM[sheet], row = KOREKSI_ROWS[sheet][id], fields = {};
+  let kosong = false;
+  cfg.fields.forEach(f => {
+    let v;
+    if (f.t === 'sectionB') {
+      const trs = document.querySelectorAll('#formModalBody .kf-sb-kondisi');
+      if (!trs.length) return;
+      v = Array.from(document.querySelectorAll('#formModalBody tbody tr')).filter(tr => tr.querySelector('.kf-sb-kondisi'))
+        .map(tr => ({ item: tr.querySelector('.kf-sb-item').textContent, kondisi: tr.querySelector('.kf-sb-kondisi').value, keterangan: tr.querySelector('.kf-sb-ket').value }));
+      let lama = []; try { lama = JSON.parse(row.SectionB || '[]'); } catch (e) {}
+      if (JSON.stringify(v) === JSON.stringify(lama.map(it => ({ item: it.item, kondisi: it.kondisi, keterangan: it.keterangan || '' })))) return;
+    } else if (f.t === 'items') {
+      v = Array.from(document.querySelectorAll('#kfItemsWrap .kf-item')).map(el => ({
+        namaBarang: el.querySelector('.kf-it-nama').value.trim(), jumlah: el.querySelector('.kf-it-jml').value.trim(),
+        satuan: el.querySelector('.kf-it-sat').value.trim(), keterangan: el.querySelector('.kf-it-ket').value.trim(), statusBarang: el.dataset.status || 'Menunggu'
+      })).filter(it => it.namaBarang);
+      if (!v.length) { kosong = true; return; }
+      let lama = []; try { lama = JSON.parse(row.ItemsJSON || '[]'); } catch (e) {}
+      const norm = a => JSON.stringify(a.map(it => [String(it.namaBarang || ''), String(it.jumlah || ''), String(it.satuan || ''), String(it.keterangan || '')]));
+      if (norm(v) === norm(lama)) return;
+    } else {
+      v = val('kf_' + f.k);
+      if (v === koreksiNilai_(row, f)) return;
+    }
+    fields[f.k] = v;
+  });
+  if (kosong) { showToast('Peringatan', 'Daftar barang minimal berisi 1 barang.', 'danger'); return false; }
+  const sinkronA = !!(document.getElementById('kfSinkronA') || {}).checked;
+  if (!Object.keys(fields).length && !sinkronA) { showToast('Info', 'Tidak ada perubahan.', 'info'); return false; }
+  const alasan = val('kfAlasan').trim();
+  closeFormModal();
+  callServer('adminEditRecord', [sheet, id, fields, alasan, AppState.user.Nama, { sinkronSectionA: sinkronA }], null, cfg.reload, 'Menyimpan koreksi...');
+  return false;
+}
+
+function openBatalkanModal(sheet, id) {
+  const cfg = KOREKSI_FORM[sheet];
+  openFormModal(`Batalkan ${cfg.judul} (Admin)`, `
+    <form onsubmit="return submitBatalkan(event,'${sheet}','${id}')">
+      <p class="small">Data akan <b>disembunyikan</b> dari tabel, laporan, dashboard, dan notifikasi, tetapi tetap tersimpan di sheet. Data bisa dipulihkan dari <b>Administrasi Akun → Data Dibatalkan</b>.</p>
+      <label class="form-label">Alasan pembatalan <span class="text-danger">*</span></label>
+      <textarea class="form-control" id="batalAlasan" rows="2" required maxlength="300" placeholder="Contoh: data ganda, sudah diinput oleh Budi pukul 08.05"></textarea>
+      <div class="d-flex justify-content-end gap-2 mt-3">
+        <button type="button" class="btn btn-outline-ip" onclick="closeFormModal()">Kembali</button>
+        <button type="submit" class="btn btn-danger"><i class="bi bi-x-octagon"></i> Batalkan Data</button>
+      </div>
+    </form>`);
+}
+function submitBatalkan(evt, sheet, id) {
+  evt.preventDefault();
+  const alasan = val('batalAlasan').trim();
+  if (!alasan) { showToast('Peringatan', 'Alasan wajib diisi.', 'danger'); return false; }
+  closeFormModal();
+  callServer('batalkanRecord', [sheet, id, alasan, AppState.user.Nama], null, KOREKSI_FORM[sheet].reload, 'Membatalkan data...');
+  return false;
+}
+
+function loadDataDibatalkan() {
+  const sheet = val('batalModul');
+  const wrap = document.getElementById('tblDataDibatalkan');
+  if (!sheet || !wrap) return;
+  wrap.innerHTML = '<div class="text-center text-muted py-2"><span class="spinner-border spinner-border-sm"></span></div>';
+  google.script.run.withSuccessHandler(res => {
+    renderGenericTable('tblDataDibatalkan',
+      [ {label:'Data', render:r=>escHtmlIpg(r.Nomor || '-')}, {label:'Dibuat oleh', render:r=>escHtmlIpg(r.CreatedBy || '-')},
+        {label:'Alasan', render:r=>escHtmlIpg(r.AlasanBatal || '-')},
+        {label:'Dibatalkan', render:r=>`${escHtmlIpg(r.DibatalkanOleh || '-')}<div class="small text-muted">${escHtmlIpg(String(r.DibatalkanAt || '').slice(0, 16))}</div>`} ],
+      (Array.isArray(res.data) ? res.data : []).sort((a, b) => String(b.DibatalkanAt).localeCompare(String(a.DibatalkanAt))),
+      row => `<button class="btn btn-outline-ip btn-sm-ip" onclick="callServer('pulihkanRecord',['${sheet}','${row.ID}',AppState.user.Nama],null,loadDataDibatalkan,'Memulihkan...')"><i class="bi bi-arrow-counterclockwise"></i> Pulihkan</button>`);
+  }).withFailureHandler(e => { wrap.innerHTML = `<div class="small text-danger">${escHtmlIpg(e.message)}</div>`; }).getDataDibatalkan(sheet);
 }

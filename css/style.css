@@ -304,3 +304,16 @@ h1,h2,h3,h4,h5,h6 { font-family: 'Poppins', sans-serif; font-weight: 600; color:
   .user-chip { padding: .2rem .3rem; gap: .3rem; }
   .user-avatar { width: 30px; height: 30px; }
 }
+
+/* Panel notifikasi di HP: selebar layar, tidak terpotong, teks panjang terlipat */
+@media (max-width: 575.98px) {
+  #notifDropdown {
+    position: fixed !important; left: 8px !important; right: 8px !important;
+    top: var(--notif-top, 64px) !important; width: auto !important;
+    max-height: calc(100vh - var(--notif-top, 64px) - 16px) !important;
+  }
+}
+#notifDropdown > div { overflow-wrap: anywhere; }
+
+/* Pesan konfirmasi boleh berisi baris baru (mis. peringatan data ganda) */
+#confirmModalBody { white-space: pre-line; }
