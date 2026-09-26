@@ -2275,7 +2275,7 @@ function loadIzinTamu() {
         {label:'Jenis', key:'JenisTamu'}, {label:'Nama Perusahaan', render:r=>r.NamaPerusahaan||'-'}, {label:'Jumlah', key:'Jumlah'},
         {label:'Menemui', key:'MenemuiNama'},
         {label:'Email', render:r=> r.EmailTerkirim==='Ya' ? '<span class="pill pill-success">Terkirim</span>' : '<span class="pill pill-neutral">-</span>'},
-        {label:'Approval', render:r=>statusPill(r.StatusApproval)}, {label:'Kunjungan', render:r=>statusPill(r.StatusKunjungan)} ],
+        {label:'Approval', render:r=>statusPill(r.StatusApproval) + alasanTolakHtml(r)}, {label:'Kunjungan', render:r=>statusPill(r.StatusKunjungan)} ],
       rows.sort((a,b)=> (b.NoPengajuan||'').localeCompare(a.NoPengajuan||'')),
       row => izinTamuActions(row)
     );
@@ -2329,11 +2329,41 @@ function renderIzinTamuDashboard(rows) {
       <div><div class="stat-value">${c.value}</div><div class="stat-label">${c.label}</div></div>
     </div></div>`).join('');
 }
+function escHtmlIpg(t) {
+  return String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function alasanTolakHtml(r) {
+  const s = r.StatusApproval || r.Status;
+  return (s === 'Ditolak' && r.AlasanTolak) ? `<div class="small text-muted mt-1" style="max-width:220px;white-space:normal;">Alasan: ${escHtmlIpg(r.AlasanTolak)}</div>` : '';
+}
+/** Modal penolakan Izin Tamu / Barang Keluar — alasan wajib, dikirim ke pemohon lewat email */
+function openTolakModal(jenis, id, noDok) {
+  const label = jenis === 'tamu' ? 'Izin Tamu' : 'Barang Keluar';
+  openFormModal(`Tolak ${label} — ${escHtmlIpg(noDok)}`, `
+    <form onsubmit="return submitTolak(event,'${jenis}','${id}')">
+      <label class="form-label">Alasan penolakan <span class="text-danger">*</span></label>
+      <textarea class="form-control" id="tolakAlasan" rows="3" required maxlength="500" placeholder="Contoh: data kendaraan belum lengkap, mohon lengkapi nomor polisi."></textarea>
+      <p class="section-sub mt-2">Alasan ini tercatat di data pengajuan dan dikirim lewat email ke pemohon serta tembusan (Admin, TL Keamanan, SPS Keamanan).</p>
+      <div class="d-flex justify-content-end gap-2">
+        <button type="button" class="btn btn-outline-ip" onclick="closeFormModal()">Batal</button>
+        <button type="submit" class="btn btn-danger"><i class="bi bi-x-circle"></i> Tolak Pengajuan</button>
+      </div>
+    </form>`);
+}
+function submitTolak(evt, jenis, id) {
+  evt.preventDefault();
+  const alasan = val('tolakAlasan').trim();
+  if (!alasan) { showToast('Peringatan', 'Alasan penolakan wajib diisi.', 'danger'); return false; }
+  closeFormModal();
+  if (jenis === 'tamu') callServer('approveIzinTamu', [id, false, AppState.user.Nama, alasan], null, loadIzinTamu, 'Menolak & mengirim email...');
+  else callServer('tolakBarangKeluar', [id, AppState.user.Nama, alasan], null, loadBarangKeluar, 'Menolak & mengirim email...');
+  return false;
+}
 function izinTamuActions(row) {
   let btns = `<button class="btn btn-outline-ip btn-sm-ip" onclick="cetakIzinTamu('${row.ID}')"><i class="bi bi-printer"></i></button> `;
   if (row.StatusApproval === 'Diajukan' && ['TL_KEAMANAN','ADMIN'].includes(AppState.user.Role)) {
-    btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('approveIzinTamu',['${row.ID}',true,'${AppState.user.Nama}'],'Izin tamu disetujui',loadIzinTamu)">Setujui</button> `;
-    btns += `<button class="btn btn-outline-ip btn-sm-ip" onclick="callServer('approveIzinTamu',['${row.ID}',false,'${AppState.user.Nama}'],'Izin tamu ditolak',loadIzinTamu)">Tolak</button> `;
+    btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('approveIzinTamu',['${row.ID}',true,AppState.user.Nama,''],null,loadIzinTamu,'Menyetujui & mengirim email...')">Setujui</button> `;
+    btns += `<button class="btn btn-outline-ip btn-sm-ip" onclick="openTolakModal('tamu','${row.ID}','${row.NoPengajuan}')">Tolak</button> `;
   }
   if (row.StatusApproval === 'Disetujui' && row.StatusKunjungan === 'Menunggu Check-In' && ['SATPAM','ADMIN'].includes(AppState.user.Role))
     btns += `<button class="btn btn-outline-ip btn-sm-ip" onclick="callServer('checkInTamu',['${row.ID}','${AppState.user.Nama}'],'Tamu check-in',loadIzinTamu)">Check-In</button> `;
@@ -2648,8 +2678,8 @@ function renderBarangKeluarTable() {
         try { const items = JSON.parse(r.ItemsJSON||'[]'); return items.length ? `${items[0].namaBarang}${items.length>1?` (+${items.length-1} lainnya)`:''}` : '-'; }
         catch(e){ return '-'; }
       }},
-      {label:'Status', render:r=>statusPill(r.Status)},
-      {label:'Cetak', render:r => r.Status !== 'Diajukan' ? `<button class="btn btn-outline-ip btn-sm-ip" onclick="cetakSuratBarang('${r.NoSurat}')"><i class="bi bi-printer"></i></button>` : '-' } ],
+      {label:'Status', render:r=>statusPill(r.Status) + alasanTolakHtml(r)},
+      {label:'Cetak', render:r => !['Diajukan','Ditolak'].includes(r.Status) ? `<button class="btn btn-outline-ip btn-sm-ip" onclick="cetakSuratBarang('${r.NoSurat}')"><i class="bi bi-printer"></i></button>` : '-' } ],
     rows.sort((a,b)=> (b.NoSurat||'').localeCompare(a.NoSurat||'')),
     row => barangKeluarActions(row)
   );
@@ -2672,7 +2702,8 @@ function renderBarangKeluarDashboard(rows) {
 function barangKeluarActions(row) {
   let btns = '';
   if (row.Status === 'Diajukan' && ['SPS_KEAMANAN','ADMIN'].includes(AppState.user.Role))
-    btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('approveSPSBarangKeluar',['${row.ID}','${AppState.user.Nama}'],'Disetujui SPS Keamanan',loadBarangKeluar)">Approve</button> `;
+    btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('approveSPSBarangKeluar',['${row.ID}',AppState.user.Nama],null,loadBarangKeluar,'Menyetujui & mengirim email...')">Approve</button> `
+          + `<button class="btn btn-outline-ip btn-sm-ip" onclick="openTolakModal('bk','${row.ID}','${row.NoSurat}')">Tolak</button> `;
   if (row.Status === 'Disetujui' && ['DANRU','ADMIN'].includes(AppState.user.Role))
     btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('konfirmasiKeluarDanru',['${row.ID}','${AppState.user.Nama}'],'Barang keluar dikonfirmasi',loadBarangKeluar)">Konfirmasi Keluar</button> `;
   if (row.Status === 'Barang Keluar' && row.Kategori === 'Diperbaiki' && ['SATPAM','ADMIN'].includes(AppState.user.Role))
@@ -4093,12 +4124,17 @@ function loadAdministrasi() {
   c.innerHTML = sectionHeader('Administrasi Akun & Konfigurasi Sistem', '8 Role, approval registrasi, audit trail — khusus Admin')
     + `<div class="card-ip mb-3">
          <h6 class="mb-2"><i class="bi bi-envelope-gear"></i> Konfigurasi Notifikasi</h6>
+         <label class="form-label mb-1">Tujuan Notifikasi Izin Tamu Masuk</label>
          <div class="row g-2 align-items-end">
-           <div class="col-md-8"><label class="form-label">Email Admin — Tujuan Notifikasi Izin Tamu Masuk</label>
-             <input type="email" class="form-control" id="cfgEmailAdminTamu" placeholder="admin@example.com" value="${AppState.config.emailAdminTamu || ''}"></div>
-           <div class="col-md-4"><button class="btn btn-primary-ip w-100" onclick="saveEmailAdminTamu()"><i class="bi bi-check2"></i> Simpan</button></div>
+           <div class="col-md-4"><label class="form-label small text-muted mb-1">Email SPS Keamanan</label>
+             <input type="text" class="form-control" id="cfgEmailTamuSps" placeholder="sps@example.com" value="${AppState.config.emailTamuSps || ''}"></div>
+           <div class="col-md-4"><label class="form-label small text-muted mb-1">Email TL Keamanan</label>
+             <input type="text" class="form-control" id="cfgEmailTamuTl" placeholder="tl@example.com" value="${AppState.config.emailTamuTl || ''}"></div>
+           <div class="col-md-4"><label class="form-label small text-muted mb-1">Email Admin</label>
+             <input type="text" class="form-control" id="cfgEmailTamuAdmin" placeholder="admin@example.com" value="${AppState.config.emailTamuAdmin !== undefined ? AppState.config.emailTamuAdmin : (AppState.config.emailAdminTamu || '')}"></div>
+           <div class="col-12"><button class="btn btn-primary-ip" onclick="saveEmailIzinTamu()"><i class="bi bi-check2"></i> Simpan Email Izin Tamu</button></div>
          </div>
-         <p class="section-sub mt-2 mb-0">Email berisi ringkasan pengajuan (format WA) dikirim otomatis ke alamat ini setiap ada pengajuan Izin Tamu Masuk baru.</p>
+         <p class="section-sub mt-2 mb-0">Dikirimi email saat ada pengajuan Izin Tamu baru, dan menerima tembusan saat pengajuan disetujui atau ditolak. Pemohon ikut dikirimi email keputusan ke alamat di akunnya.</p>
          <hr class="my-3">
          <label class="form-label mb-1">Tujuan Notifikasi Pengajuan Barang Keluar</label>
          <div class="row g-2 align-items-end">
@@ -4110,7 +4146,8 @@ function loadAdministrasi() {
              <input type="text" class="form-control" id="cfgEmailBKAdmin" placeholder="admin@example.com" value="${AppState.config.emailBKAdmin || ''}"></div>
            <div class="col-12"><button class="btn btn-primary-ip" onclick="saveEmailBarangKeluar()"><i class="bi bi-check2"></i> Simpan Email Barang Keluar</button></div>
          </div>
-         <p class="section-sub mt-2 mb-0">Satu email berisi ringkasan pengajuan dan daftar barang dikirim otomatis ke alamat-alamat ini setiap ada pengajuan Barang Keluar baru. Satu kolom boleh berisi lebih dari satu alamat, dipisah koma. Kolom kosong dilewati.</p>
+         <p class="section-sub mt-2 mb-0">Dikirimi email saat ada pengajuan Barang Keluar baru, dan menerima tembusan saat pengajuan disetujui atau ditolak SPS Keamanan. Pemohon ikut dikirimi email keputusan ke alamat di akunnya.</p>
+         <p class="section-sub mt-1 mb-0">Satu kolom boleh berisi lebih dari satu alamat, dipisah koma. <b>Kolom kosong dilewati dan tidak memakai kuota email.</b></p>
        </div>
        <div class="card-ip mb-3">
          <h6 class="mb-2"><i class="bi bi-telephone-forward"></i> Kontak Instansi Darurat</h6>
@@ -4290,13 +4327,15 @@ function saveUserRole(id) {
   const newRole = labelToKey[sel.value];
   callServer('updateFieldById', ['USERS', id, { Role: newRole }], 'Role diperbarui.', loadAdministrasi, 'Menyimpan...');
 }
-function saveEmailAdminTamu() {
-  const email = val('cfgEmailAdminTamu');
-  callServer('setConfigValue', ['emailAdminTamu', email], 'Email notifikasi tersimpan.', () => { AppState.config.emailAdminTamu = email; }, 'Menyimpan...');
+function saveEmailIzinTamu() {
+  return saveEmailGroup([['emailTamuSps', 'cfgEmailTamuSps', 'SPS Keamanan'], ['emailTamuTl', 'cfgEmailTamuTl', 'TL Keamanan'],
+    ['emailTamuAdmin', 'cfgEmailTamuAdmin', 'Admin'], ['emailAdminTamu', 'cfgEmailTamuAdmin', 'Admin']], 'Izin Tamu');
 }
 /** Simpan 3 penerima email pengajuan Barang Keluar. Alamat divalidasi dulu supaya salah ketik ketahuan sebelum tersimpan. */
-async function saveEmailBarangKeluar() {
-  const fields = [['emailBKSps', 'cfgEmailBKSps', 'SPS Keamanan'], ['emailBKTl', 'cfgEmailBKTl', 'TL Keamanan'], ['emailBKAdmin', 'cfgEmailBKAdmin', 'Admin']];
+function saveEmailBarangKeluar() {
+  return saveEmailGroup([['emailBKSps', 'cfgEmailBKSps', 'SPS Keamanan'], ['emailBKTl', 'cfgEmailBKTl', 'TL Keamanan'], ['emailBKAdmin', 'cfgEmailBKAdmin', 'Admin']], 'Barang Keluar');
+}
+async function saveEmailGroup(fields, namaModul) {
   const values = {};
   for (const [key, id, label] of fields) {
     const list = val(id).split(/[,;\s]+/).map(e => e.trim()).filter(Boolean);
@@ -4312,7 +4351,7 @@ async function saveEmailBarangKeluar() {
       AppState.config[key] = values[key];
     }
     hideSaving();
-    showToast('Berhasil', 'Email notifikasi Barang Keluar tersimpan.', 'success');
+    showToast('Berhasil', `Email notifikasi ${namaModul} tersimpan.`, 'success');
   } catch (e) {
     hideSaving();
     showToast('Gagal', e.message, 'danger');
