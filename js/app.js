@@ -2260,7 +2260,7 @@ function cetakRekapPatroli(id) {
 // ════════════════════════════════════════════════════════
 function loadIzinTamu() {
   const c = document.getElementById('app-container');
-  c.innerHTML = sectionHeader('Izin Tamu Masuk', 'Email notifikasi otomatis ke Admin saat diajukan → Approval TL Keamanan → Check-in/out oleh Satpam')
+  c.innerHTML = sectionHeader('Izin Tamu Masuk', 'Email otomatis ke SPS/TL Keamanan & Admin saat diajukan → Approval TL Keamanan (email ke pemohon) → Check-in/out oleh Satpam')
     + `<div class="mb-3 d-flex justify-content-end gap-2 flex-wrap">
          <button class="btn btn-outline-ip" onclick="openUnduhLaporanModal('izin_tamu')"><i class="bi bi-file-earmark-arrow-down"></i> Unduh Laporan</button>
          <button class="btn btn-primary-ip" onclick="openIzinTamuForm()"><i class="bi bi-plus-lg"></i> Ajukan Izin Tamu</button>
@@ -2413,7 +2413,7 @@ function openIzinTamuForm() {
         <div class="col-4"><label class="form-label">Jabatan</label><input type="text" class="form-control" id="itMenemuiJabatan"></div>
         <div class="col-4"><label class="form-label">No. HP</label><input type="text" class="form-control" id="itMenemuiHP"></div>
       </div>
-      <p class="section-sub mt-2 mb-0"><i class="bi bi-info-circle"></i> Email notifikasi otomatis terkirim ke Admin begitu diajukan.</p>
+      <p class="section-sub mt-2 mb-0"><i class="bi bi-info-circle"></i> Email notifikasi otomatis terkirim ke SPS Keamanan, TL Keamanan &amp; Admin begitu diajukan. Hasil persetujuan dikirim ke email akun Anda.</p>
       <button type="submit" class="btn btn-primary-ip w-100 mt-3">Ajukan Izin</button>
     </form>`);
   document.getElementById('itNamaWrap').innerHTML = '';
@@ -4197,6 +4197,13 @@ function loadAdministrasi() {
   loadLaporanHeaderTable();
   loadRoleAccessTable();
   google.script.run.withSuccessHandler(res => {
+    // Tandai email yang dipakai lebih dari satu akun (selain yang Ditolak)
+    const hitungEmail = {};
+    (res.data || []).forEach(u => { const e = String(u.Email || '').trim().toLowerCase(); if (e && u.Status !== 'Ditolak') hitungEmail[e] = (hitungEmail[e] || 0) + 1; });
+    const emailGanda = u => { const e = String(u.Email || '').trim().toLowerCase(); return e && u.Status !== 'Ditolak' && hitungEmail[e] > 1; };
+    const jmlGanda = (res.data || []).filter(emailGanda).length;
+    if (jmlGanda) document.getElementById('tblUsers').insertAdjacentHTML('beforebegin',
+      `<div class="alert alert-warning small" id="emailGandaInfo"><i class="bi bi-exclamation-triangle"></i> ${jmlGanda} akun memakai email yang sama dengan akun lain (ditandai <b>ganda</b>). Nonaktifkan/tolak akun yang tidak dipakai, atau ubah emailnya di sheet USERS.</div>`);
     renderGenericTable('tblUsers',
       [ {label:'Nama', key:'Nama'}, {label:'Username', key:'Username'},
         {label:'Role', render:r=>`
@@ -4204,10 +4211,10 @@ function loadAdministrasi() {
             <select class="form-select form-select-sm" style="width:auto;" id="roleSelect_${r.ID}">${selectOptions(Object.keys(ROLE_LABEL).map(k=>ROLE_LABEL[k]), ROLE_LABEL[r.Role])}</select>
             <button class="btn btn-outline-ip btn-sm-ip" title="Simpan Role" onclick="saveUserRole('${r.ID}')"><i class="bi bi-check2"></i></button>
           </div>` },
-        {label:'Email', render:r=>r.Email||'-'}, {label:'Status', render:r=>statusPill(r.Status)} ],
+        {label:'Email', render:r=>(r.Email ? escHtmlIpg(r.Email) : '-') + (emailGanda(r) ? ' <span class="pill pill-danger">ganda</span>' : '')}, {label:'Status', render:r=>statusPill(r.Status)} ],
       (res.data||[]),
       row => row.Status === 'Pending'
-        ? `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('approveAccount',['${row.ID}',true],'Akun disetujui',loadAdministrasi)">Setujui</button>
+        ? `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('approveAccount',['${row.ID}',true],null,loadAdministrasi)">Setujui</button>
            <button class="btn btn-outline-ip btn-sm-ip" onclick="callServer('approveAccount',['${row.ID}',false],'Akun ditolak',loadAdministrasi)">Tolak</button>`
         : (row.Status === 'Aktif' ? `<button class="btn btn-outline-ip btn-sm-ip" onclick="callServer('updateFieldById',['USERS','${row.ID}',{Status:'Nonaktif'}],'Akun dinonaktifkan',loadAdministrasi)">Nonaktifkan</button>`
            : `<button class="btn btn-outline-ip btn-sm-ip" onclick="callServer('updateFieldById',['USERS','${row.ID}',{Status:'Aktif'}],'Akun diaktifkan',loadAdministrasi)">Aktifkan</button>`)
