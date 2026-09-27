@@ -50,7 +50,7 @@ const MENU = [
   ]}
 ];
 /** Versi tampilan/fitur — dinaikkan di setiap paket update frontend */
-const IPG_VERSI = '3.1 · 2026.09.26';
+const IPG_VERSI = '3.1.1 · 2026.09.26';
 
 const ROLE_LABEL = {
   ADMIN: 'Admin', SPS_KEAMANAN: 'SPS Keamanan', TL_KEAMANAN: 'TL Keamanan', SATPAM: 'Satpam',
@@ -3164,8 +3164,8 @@ function cetakBAIncident(id) {
     if (!r) { showToast('Gagal', 'Data tidak ditemukan.', 'danger'); return; }
     const fotoRow = (r.FotoUrl || r.FotoSesudahUrl) ? `
       <div class="row" style="display:flex;gap:12px;margin-top:8px;">
-        ${r.FotoUrl ? `<div style="flex:1;"><div style="font-size:11px;font-weight:700;margin-bottom:4px;">Foto Sebelum</div><img src="${r.FotoUrl}" style="width:100%;border-radius:6px;border:1px solid #ccc;"></div>` : ''}
-        ${r.FotoSesudahUrl ? `<div style="flex:1;"><div style="font-size:11px;font-weight:700;margin-bottom:4px;">Foto Sesudah</div><img src="${r.FotoSesudahUrl}" style="width:100%;border-radius:6px;border:1px solid #ccc;"></div>` : ''}
+        ${r.FotoUrl ? `<div style="flex:1;"><div style="font-size:11px;font-weight:700;margin-bottom:4px;">Foto Sebelum</div>${ipgFotoCetak(r.FotoUrl)}</div>` : ''}
+        ${r.FotoSesudahUrl ? `<div style="flex:1;"><div style="font-size:11px;font-weight:700;margin-bottom:4px;">Foto Sesudah</div>${ipgFotoCetak(r.FotoSesudahUrl)}</div>` : ''}
       </div>` : '';
     const body = buildLetterheadHTML('baIncident',
         `No. Insiden: ${r.NoInsiden} &nbsp;|&nbsp; ${r.Lokasi} &nbsp;|&nbsp; Kategori: <b>${r.Kategori}</b> &nbsp;|&nbsp; Risiko: <b>${r.TingkatRisiko}</b> &nbsp;|&nbsp; Status: <b>${r.Status}</b>`) + `
@@ -3214,7 +3214,7 @@ function handleFotoIncidentUpload(evt) {
   compressImageFile_(file).then(function (compressed) {
     google.script.run.withSuccessHandler(res => {
       if (res.success) {
-        incFotoUrl = res.data.url;
+        incFotoUrl = res.data.directUrl || res.data.url; // link gambar langsung, supaya tampil di BA cetak
         statusEl.innerHTML = `<a href="${res.data.url}" target="_blank"><i class="bi bi-check-circle text-success"></i> Foto terlampir</a>`;
       } else {
         statusEl.innerHTML = `<span class="text-danger">${res.message}</span>`;
@@ -4820,4 +4820,23 @@ async function simpanPengaturanApk() {
     showToast('Berhasil', 'Pengaturan APK tersimpan.', 'success');
     loadTentang();
   } catch (e) { hideSaving(); showToast('Gagal', e.message, 'danger'); }
+}
+
+
+// ── Foto Google Drive: ubah link apa pun (halaman viewer /file/d/…, ?id=…, lh3) menjadi link gambar langsung ──
+function ipgDriveFileId(url) {
+  const u = String(url || '');
+  const m = u.match(/\/file\/d\/([A-Za-z0-9_-]{10,})/) || u.match(/[?&]id=([A-Za-z0-9_-]{10,})/) || u.match(/googleusercontent\.com\/d\/([A-Za-z0-9_-]{10,})/);
+  return m ? m[1] : '';
+}
+function ipgDriveImg(url) {
+  const id = ipgDriveFileId(url);
+  return id ? 'https://lh3.googleusercontent.com/d/' + id + '=w1200' : String(url || '');
+}
+/** <img> untuk dokumen cetak; bila gagal dimuat, tampil tautan pengganti (bukan ikon gambar rusak) */
+function ipgFotoCetak(url) {
+  const src = ipgDriveImg(url);
+  const cadangan = ipgDriveFileId(url) ? 'https://drive.google.com/file/d/' + ipgDriveFileId(url) + '/view' : String(url || '');
+  return `<img src="${escHtmlIpg(src)}" referrerpolicy="no-referrer" style="width:100%;max-height:360px;object-fit:contain;border-radius:6px;border:1px solid #ccc;"
+    onerror="this.outerHTML='<div style=&quot;font-size:11px;color:#888;border:1px dashed #ccc;border-radius:6px;padding:10px;&quot;>Foto tidak dapat ditampilkan. Buka: ${escHtmlIpg(cadangan).replace(/'/g, '&#39;')}</div>'">`;
 }
