@@ -50,7 +50,7 @@ const MENU = [
   ]}
 ];
 /** Versi tampilan/fitur — dinaikkan di setiap paket update frontend */
-const IPG_VERSI = '3.2 · 2026.09.27';
+const IPG_VERSI = '3.3 · 2026.09.27';
 
 const ROLE_LABEL = {
   ADMIN: 'Admin', SPS_KEAMANAN: 'SPS Keamanan', TL_KEAMANAN: 'TL Keamanan', SATPAM: 'Satpam',
@@ -2750,6 +2750,9 @@ function renderBarangKeluarTable() {
         try { const items = JSON.parse(r.ItemsJSON||'[]'); return items.length ? `${items[0].namaBarang}${items.length>1?` (+${items.length-1} lainnya)`:''}` : '-'; }
         catch(e){ return '-'; }
       }},
+      {label:'Foto', render:r=> r.FotoUrl
+        ? `<button type="button" class="pill pill-info" style="border:0;" onclick="lihatFotoBK('${r.ID}')"><i class="bi bi-image"></i> Lihat</button>`
+        : '<span class="pill pill-neutral">Tanpa foto</span>'},
       {label:'Status', render:r=>statusPill(r.Status) + alasanTolakHtml(r)},
       {label:'Cetak', render:r => !['Diajukan','Ditolak'].includes(r.Status) ? `<button class="btn btn-outline-ip btn-sm-ip" onclick="cetakSuratBarang('${r.NoSurat}')"><i class="bi bi-printer"></i></button>` : '-' } ],
     rows.sort((a,b)=> (b.NoSurat||'').localeCompare(a.NoSurat||'')),
@@ -2773,8 +2776,10 @@ function renderBarangKeluarDashboard(rows) {
 }
 function barangKeluarActions(row) {
   let btns = '';
+  if (row.Status === 'Diajukan' && (['SPS_KEAMANAN','ADMIN'].includes(AppState.user.Role) || row.CreatedBy === AppState.user.Nama))
+    btns += `<button class="btn btn-outline-ip btn-sm-ip" title="${row.FotoUrl ? 'Ganti foto barang' : 'Tambah foto barang'}" onclick="openFotoBKModal('${row.ID}')"><i class="bi bi-camera"></i></button> `;
   if (row.Status === 'Diajukan' && ['SPS_KEAMANAN','ADMIN'].includes(AppState.user.Role))
-    btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('approveSPSBarangKeluar',['${row.ID}',AppState.user.Nama],null,loadBarangKeluar,'Menyetujui & mengirim email...')">Approve</button> `
+    btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="approveBarangKeluar('${row.ID}')">Approve</button> `
           + `<button class="btn btn-outline-ip btn-sm-ip" onclick="openTolakModal('bk','${row.ID}','${row.NoSurat}')">Tolak</button> `;
   if (row.Status === 'Disetujui' && ['DANRU','ADMIN'].includes(AppState.user.Role))
     btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('konfirmasiKeluarDanru',['${row.ID}','${AppState.user.Nama}'],'Barang keluar dikonfirmasi',loadBarangKeluar)">Konfirmasi Keluar</button> `;
@@ -2818,8 +2823,14 @@ function openBarangKeluarForm() {
         <button type="button" class="btn btn-outline-ip btn-sm-ip" onclick="addBarangItemRow()"><i class="bi bi-plus"></i> Tambah Barang</button>
       </div>
       <div id="bkItemsWrap"></div>
+      <hr>
+      <label class="form-label mb-1"><b>V. Lampiran Foto</b> <span class="text-muted small">(opsional, 1 foto)</span></label>
+      <div class="small text-muted mb-2">Foto barang yang akan dikeluarkan, untuk diperiksa SPS Keamanan sebelum approval.</div>
+      <input type="file" accept="image/*" class="form-control" id="bkFotoInput" onchange="onBkFotoSelected(this, 'bkFotoStatus', 'bk')">
+      <div id="bkFotoStatus" class="mt-2"></div>
       <button type="submit" class="btn btn-primary-ip w-100 mt-3">Ajukan (Terbit Nomor Surat Otomatis)</button>
     </form>`);
+  bkFotoUrl = ''; bkFotoUploading = false;
   document.getElementById('bkItemsWrap').innerHTML = '';
   addBarangItemRow(); addBarangItemRow();
 }
@@ -2858,7 +2869,8 @@ function submitBarangKeluarForm(evt) {
     pelaksanaPerusahaan: val('bkPelaksanaPerusahaan'), pelaksanaTelepon: val('bkPelaksanaTelepon'), pelaksanaAlamat: val('bkPelaksanaAlamat'),
     pengemudiNama: val('bkPengemudiNama'), pengemudiAlamatRumah: val('bkPengemudiAlamat'),
     jenisKendaraan: val('bkJenisKendaraan'), warnaKendaraan: val('bkWarnaKendaraan'), nomorPolisi: val('bkNomorPolisi'), tujuan: val('bkTujuan'),
-    items, createdBy: AppState.user.Nama };
+    items, createdBy: AppState.user.Nama, fotoUrl: bkFotoUrl };
+  if (bkFotoUploading) { showToast('Tunggu', 'Foto masih diunggah, coba lagi sebentar.', 'danger'); return false; }
   closeFormModal();
   callServer('ajukanBarangKeluar', [payload], null, loadBarangKeluar, 'Menerbitkan nomor surat...');
   return false;
@@ -2917,7 +2929,7 @@ function buildLetterheadHTML(jenisOrTitle, arg2, arg3) {
 /** signers: [{label, name}] — kolom approval standar di bagian bawah form (PRD 7.4) */
 /** signers: [{label, name}]. docRef: No. dokumen (BA/Surat/Izin) untuk isi QR verifikasi.
     QR cuma muncul di atas nama yang SUDAH approve (name terisi) — bukan di kolom kosong. */
-function buildApprovalTable(signers, docRef) {
+function buildApprovalTable(signers, docRef, setelahTtd) {
   const QR_BOX = 66; // ukuran tetap kotak QR (px) — konsisten berapapun kompleksitas datanya
   const w = Math.floor(100 / signers.length);
   const labelCells = signers.map(s =>
@@ -2938,7 +2950,7 @@ function buildApprovalTable(signers, docRef) {
     <table style="width:100%; margin-top:32px; border-collapse:collapse;">
       <tr>${labelCells}</tr>
       <tr>${signCells}</tr>
-    </table>
+    </table>${setelahTtd || ''}
     <div style="margin-top:24px; font-size:9.5px; color:#999; text-align:center; border-top:1px dashed #ccc; padding-top:8px;">
       Dokumen ini dihasilkan otomatis oleh sistem IP GUARD V3 — PT PLN Indonesia Power UBP Grati. Tanda tangan digital tercatat pada Audit Trail sistem.
     </div>`;
@@ -3064,7 +3076,13 @@ function cetakSuratBarang(noSurat) {
         { label: 'Pemohon (SPS Bidang)', name: r.SPSBidangPemohon },
         { label: 'Menyetujui (SPS Keamanan)', name: r.ApprovedBySPS },
         { label: 'Diperiksa Fisik (Danru — TTD & Stempel Basah)', name: r.KonfirmasiOlehDanru }
-      ], `Surat Barang Keluar No. ${r.NoSurat}`);
+      ], `Surat Barang Keluar No. ${r.NoSurat}`,
+      // V. Lampiran Foto — setelah tanda tangan; tidak terpotong, pindah ke halaman berikutnya bila tidak muat
+      `<div style="page-break-inside:avoid; break-inside:avoid; margin-top:22px;">
+        <p style="font-size:12px;font-weight:700;margin-bottom:6px;">V. Lampiran Foto</p>
+        ${r.FotoUrl ? `<div style="text-align:center;">${ipgFotoCetak(r.FotoUrl)}</div>`
+                    : '<div style="font-size:11px;color:#888;">Tidak ada foto dilampirkan.</div>'}
+      </div>`);
     openPrintDocument(body);
   }).withFailureHandler(e=>showToast('Error',e.message,'danger')).findBarangKeluarByNoSurat(noSurat);
 }
@@ -4602,7 +4620,8 @@ const KOREKSI_FORM = {
     { k: 'PelaksanaTelepon', t: 'text', label: 'Telepon Pelaksana' }, { k: 'PelaksanaAlamat', t: 'text', label: 'Alamat Pelaksana' },
     { k: 'PengemudiNama', t: 'text', label: 'Nama Pengemudi' }, { k: 'PengemudiAlamatRumah', t: 'text', label: 'Alamat Pengemudi' },
     { k: 'JenisKendaraan', t: 'text', label: 'Jenis Kendaraan' }, { k: 'WarnaKendaraan', t: 'text', label: 'Warna Kendaraan' },
-    { k: 'NomorPolisi', t: 'text', label: 'Nomor Polisi' }, { k: 'Tujuan', t: 'text' }, { k: 'ItemsJSON', t: 'items', label: 'Daftar Barang' }] },
+    { k: 'NomorPolisi', t: 'text', label: 'Nomor Polisi' }, { k: 'Tujuan', t: 'text' }, { k: 'ItemsJSON', t: 'items', label: 'Daftar Barang' },
+    { k: 'FotoUrl', t: 'foto', label: 'V. Lampiran Foto' }] },
   INCIDENT: { judul: 'Incident', reload: () => loadIncident(), fields: [
     { k: 'TanggalJam', t: 'datetime', label: 'Tanggal & Jam' }, { k: 'Lokasi', t: 'text' }, { k: 'Kategori', t: 'select', opts: () => KATEGORI_INCIDENT },
     { k: 'TingkatRisiko', t: 'select', opts: ['Rendah', 'Sedang', 'Tinggi'], label: 'Tingkat Risiko' },
@@ -4633,11 +4652,11 @@ function koreksiNilai_(row, f) {
 }
 function koreksiInput_(row, f) {
   const id = 'kf_' + f.k, label = f.label || f.k, val0 = koreksiNilai_(row, f);
-  const lebar = ['textarea', 'sectionB', 'items', 'sectionC'].includes(f.t) ? 'col-12' : 'col-md-6';
+  const lebar = ['textarea', 'sectionB', 'items', 'sectionC', 'foto'].includes(f.t) ? 'col-12' : 'col-md-6';
   let input;
   if (f.t === 'select') {
     let opts = (typeof f.opts === 'function' ? f.opts() : f.opts) || [];
-    if (val0 && !opts.map(String).includes(val0)) opts = [val0].concat(opts);
+    if (!opts.map(String).includes(val0)) opts = [val0].concat(opts); // nilai kosong/lama tetap terpilih, tidak diganti opsi pertama
     input = `<select class="form-select" id="${id}">${opts.map(o => `<option ${String(o) === val0 ? 'selected' : ''}>${escHtmlIpg(o)}</option>`).join('')}</select>`;
   } else if (f.t === 'textarea' || f.t === 'sectionC') {
     input = `<textarea class="form-control" id="${id}" rows="2">${escHtmlIpg(val0)}</textarea>`;
@@ -4649,6 +4668,10 @@ function koreksiInput_(row, f) {
       return `<tr><td class="kf-sb-item">${escHtmlIpg(it.item)}</td><td><select class="form-select form-select-sm kf-sb-kondisi">${opts.map(o => `<option ${o === it.kondisi ? 'selected' : ''}>${escHtmlIpg(o)}</option>`).join('')}</select></td>
         <td><input class="form-control form-control-sm kf-sb-ket" value="${escHtmlIpg(it.keterangan || '')}"></td></tr>`; }).join('')}</tbody></table></div>`
       : '<div class="small text-muted">Section B kosong pada BA ini.</div>';
+  } else if (f.t === 'foto') {
+    input = `<input type="hidden" id="${id}" value="${escHtmlIpg(val0)}">
+      <input type="file" accept="image/*" class="form-control" onchange="onBkFotoSelected(this, 'kfFotoStatus', 'kf')">
+      <div id="kfFotoStatus" class="mt-2">${val0 ? fotoBKPreviewHtml(val0, 'kf', 'kfFotoStatus') : '<span class="small text-muted">Belum ada foto.</span>'}</div>`;
   } else if (f.t === 'items') {
     let items = []; try { items = JSON.parse(row.ItemsJSON || '[]'); } catch (e) {}
     input = `<div id="kfItemsWrap">${items.map(koreksiItemRow_).join('')}</div>
@@ -4712,10 +4735,10 @@ function submitKoreksi(evt, sheet, id) {
         namaBarang: el.querySelector('.kf-it-nama').value.trim(), jumlah: el.querySelector('.kf-it-jml').value.trim(),
         satuan: el.querySelector('.kf-it-sat').value.trim(), keterangan: el.querySelector('.kf-it-ket').value.trim(), statusBarang: el.dataset.status || 'Menunggu'
       })).filter(it => it.namaBarang);
-      if (!v.length) { kosong = true; return; }
       let lama = []; try { lama = JSON.parse(row.ItemsJSON || '[]'); } catch (e) {}
       const norm = a => JSON.stringify(a.map(it => [String(it.namaBarang || ''), String(it.jumlah || ''), String(it.satuan || ''), String(it.keterangan || '')]));
       if (norm(v) === norm(lama)) return;
+      if (!v.length) { kosong = true; return; }
     } else {
       v = val('kf_' + f.k);
       if (v === koreksiNilai_(row, f)) return;
@@ -4944,4 +4967,81 @@ function ipgDfApply(key, rows) {
   if (info) info.innerHTML = `<span class="text-muted">${hasil.length} data pada ${ipgTglPendek(t)}.</span>`
     + (lain.length ? ` <span class="ipg-df-warn"><i class="bi bi-hourglass-split"></i> ${lain.length} data dari tanggal lain masih diproses — <a href="#" onclick="ipgDfSet('${key}','');return false;">lihat semua</a></span>` : '');
   return { rows: hasil };
+}
+
+
+// ════════════════════════════════════════════════════════
+// BARANG KELUAR — V. Lampiran Foto (1 foto, opsional)
+// Tujuan foto: 'bk' = form pengajuan, 'modal' = tambah/ganti di tabel, 'kf' = form koreksi Admin
+// ════════════════════════════════════════════════════════
+let bkFotoUrl = '', bkFotoUploading = false, fotoBKModalUrl = '';
+function setFotoTujuan_(tujuan, url) {
+  if (tujuan === 'bk') bkFotoUrl = url;
+  else if (tujuan === 'modal') fotoBKModalUrl = url;
+  else if (tujuan === 'kf') { const el = document.getElementById('kf_FotoUrl'); if (el) el.value = url; }
+}
+function hapusFotoTujuan(tujuan, statusId) {
+  setFotoTujuan_(tujuan, '');
+  const st = document.getElementById(statusId);
+  if (st) st.innerHTML = '<span class="small text-muted">Foto dihapus' + (tujuan === 'bk' ? '' : ' (tersimpan saat klik Simpan)') + '.</span>';
+}
+function fotoBKPreviewHtml(url, tujuan, statusId) {
+  return `<div class="d-flex align-items-center gap-2 flex-wrap">
+    <img src="${escHtmlIpg(ipgDriveImg(url))}" referrerpolicy="no-referrer" style="width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--border-subtle);" onerror="this.style.display='none'">
+    <div class="small"><i class="bi bi-check-circle text-success"></i> Foto terlampir
+      ${tujuan ? `<div><a href="#" class="text-danger" onclick="hapusFotoTujuan('${tujuan}','${statusId}');return false;"><i class="bi bi-trash"></i> Hapus foto</a></div>` : ''}</div>
+  </div>`;
+}
+/** Kompres + unggah 1 foto, tampilkan pratinjau di statusId, simpan link gambarnya ke tujuan */
+function onBkFotoSelected(input, statusId, tujuan) {
+  const file = input.files && input.files[0];
+  const st = document.getElementById(statusId);
+  if (!file) return;
+  if (!/^image\//.test(file.type)) { st.innerHTML = '<span class="text-danger small">File harus berupa gambar.</span>'; input.value = ''; return; }
+  bkFotoUploading = true;
+  st.innerHTML = '<span class="small"><span class="spinner-border spinner-border-sm"></span> Mengompres & mengunggah foto...</span>';
+  compressImageFile_(file).then(c => gsRun('uploadFotoBarangKeluar', c.base64, c.fileName, c.mimeType)).then(res => {
+    bkFotoUploading = false;
+    if (!res || !res.success) throw new Error((res && res.message) || 'Gagal mengunggah foto.');
+    const url = res.data.directUrl || res.data.url;
+    setFotoTujuan_(tujuan, url);
+    st.innerHTML = fotoBKPreviewHtml(url, tujuan, statusId);
+  }).catch(e => { bkFotoUploading = false; st.innerHTML = `<span class="text-danger small">${escHtmlIpg(e.message)}</span>`; input.value = ''; });
+}
+function bkRowById(id) { return (bkAllRows || []).find(r => r.ID === id); }
+function lihatFotoBK(id) {
+  const r = bkRowById(id);
+  if (!r || !r.FotoUrl) return;
+  openFormModal(`Foto Barang — ${escHtmlIpg(r.NoSurat)}`, `
+    <div class="text-center"><img src="${escHtmlIpg(ipgDriveImg(r.FotoUrl))}" referrerpolicy="no-referrer" style="max-width:100%;max-height:70vh;border-radius:8px;"
+      onerror="this.outerHTML='<div class=&quot;text-muted small py-4&quot;>Foto tidak dapat dimuat.</div>'"></div>
+    <div class="text-center mt-2"><a href="${escHtmlIpg(ipgDriveImg(r.FotoUrl))}" target="_blank" rel="noopener" class="small"><i class="bi bi-box-arrow-up-right"></i> Buka ukuran penuh</a></div>`);
+}
+/** Approve SPS: konfirmasi dulu bila pengajuan tanpa foto (foto tetap opsional) */
+function approveBarangKeluar(id) {
+  const r = bkRowById(id);
+  const kirim = () => callServer('approveSPSBarangKeluar', [id, AppState.user.Nama], null, loadBarangKeluar, 'Menyetujui & mengirim email...');
+  if (r && !r.FotoUrl) openConfirmModal(`Pengajuan ${r.NoSurat} tidak melampirkan foto barang.\n\nTetap setujui?`, kirim);
+  else kirim();
+}
+/** Tambah/ganti/hapus foto selama status Diajukan (pemohon, SPS Keamanan, Admin) */
+function openFotoBKModal(id) {
+  const r = bkRowById(id);
+  if (!r) return;
+  fotoBKModalUrl = r.FotoUrl || '';
+  openFormModal(`V. Lampiran Foto — ${escHtmlIpg(r.NoSurat)}`, `
+    <div class="small text-muted mb-2">1 foto barang (opsional). Foto bisa diubah selama pengajuan belum disetujui SPS Keamanan.</div>
+    <input type="file" accept="image/*" class="form-control" onchange="onBkFotoSelected(this, 'fotoBKModalStatus', 'modal')">
+    <div id="fotoBKModalStatus" class="mt-2">${r.FotoUrl ? fotoBKPreviewHtml(r.FotoUrl, 'modal', 'fotoBKModalStatus') : '<span class="small text-muted">Belum ada foto.</span>'}</div>
+    <div class="d-flex justify-content-end gap-2 mt-3">
+      <button type="button" class="btn btn-outline-ip" onclick="closeFormModal()">Batal</button>
+      <button type="button" class="btn btn-primary-ip" onclick="simpanFotoBK('${id}')"><i class="bi bi-check2"></i> Simpan</button>
+    </div>`);
+}
+function simpanFotoBK(id) {
+  if (bkFotoUploading) { showToast('Tunggu', 'Foto masih diunggah.', 'danger'); return; }
+  const r = bkRowById(id);
+  if (r && (r.FotoUrl || '') === fotoBKModalUrl) { closeFormModal(); return; }
+  closeFormModal();
+  callServer('setFotoBarangKeluar', [id, fotoBKModalUrl, AppState.user.Nama], null, loadBarangKeluar, 'Menyimpan foto...');
 }
