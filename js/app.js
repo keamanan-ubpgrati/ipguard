@@ -50,7 +50,7 @@ const MENU = [
   ]}
 ];
 /** Versi tampilan/fitur — dinaikkan di setiap paket update frontend */
-const IPG_VERSI = '3.1.1 · 2026.09.26';
+const IPG_VERSI = '3.2 · 2026.09.27';
 
 const ROLE_LABEL = {
   ADMIN: 'Admin', SPS_KEAMANAN: 'SPS Keamanan', TL_KEAMANAN: 'TL Keamanan', SATPAM: 'Satpam',
@@ -639,6 +639,7 @@ const SECTION_TITLES = {
 };
 
 function navigateTo(sectionId, fromHistory) {
+  if (typeof IPG_DF !== 'undefined') Object.keys(IPG_DF).forEach(k => delete IPG_DF[k]); // pindah menu → filter tanggal kembali ke hari ini
   document.querySelectorAll('.sidebar-nav .nav-link').forEach(l => l.classList.toggle('active', l.dataset.section === sectionId));
   closeSidebar();
   const loaders = {
@@ -1097,6 +1098,7 @@ function sectionHeader(title, sub, badge) {
 // MODUL: MUTASI JAGA POS — 5 Section (PRD Bab 7.2)
 // ════════════════════════════════════════════════════════
 function loadMutasiJaga() {
+  ipgDfReset('ba');
   const c = document.getElementById('app-container');
   c.innerHTML = sectionHeader('Mutasi Jaga Pos — Serah Terima 5 Section', 'Jurnal ringkas tiap 2 jam (referensi) + Berita Acara di akhir shift (Danru → TL Keamanan)')
     + `<div class="mb-3 d-flex justify-content-end gap-2 flex-wrap">
@@ -1114,11 +1116,20 @@ function loadMutasiJaga() {
        </div>
        <div class="card-ip">
          <h6 class="mb-2"><i class="bi bi-file-earmark-text"></i> BA Serah Terima Jurnal Pos Jaga <span class="badge-prd">Approval Danru Lama → Danru Baru → TL Keamanan</span></h6>
+         ${ipgDfBar('ba')}
          <div id="tblMutasiJaga"></div>
        </div>`;
   loadJurnalList();
   google.script.run.withSuccessHandler(res => {
     renderMutasiJagaDashboard(res.data || []);
+    mjAllRows = res.data || [];
+    renderMutasiJagaTable();
+  }).getAllData('MUTASI_JAGA');
+}
+let mjAllRows = [];
+function renderMutasiJagaTable() {
+  const f = ipgDfApply('ba', mjAllRows);
+  {
     renderGenericTable('tblMutasiJaga',
       [ {label:'Nomor BA', key:'NoBA'},
         {label:'Tanggal', render:r=>`<span class="text-nowrap">${(r.Tanggal||'').slice(0,10)}</span>`},
@@ -1127,10 +1138,10 @@ function loadMutasiJaga() {
         {label:'Danru Lama → Baru', render:r=>`${r.DanruLamaBy || '-'} → ${r.DanruBaruBy || '-'}`},
         {label:'Temuan (Sec D)', render: r => r.SectionD_Temuan ? `<span class="pill pill-danger">Ada</span>` : `<span class="pill pill-neutral">Nihil</span>`},
         {label:'Status', render: r => statusPill(r.StatusApproval)} ],
-      (res.data||[]).sort((a,b)=> new Date(b.WaktuInput)-new Date(a.WaktuInput)),
+      f.rows.sort((a,b)=> new Date(b.WaktuInput)-new Date(a.WaktuInput)),
       row => withKoreksi('MUTASI_JAGA', row, mutasiJagaActions(row))
     );
-  }).getAllData('MUTASI_JAGA');
+  }
 }
 function jamRangeFromSectionA(json) {
   try {
@@ -1309,7 +1320,8 @@ const REPORT_MODULE_CONFIG = {
   checklist_sarpras: { title: 'Checklist Sarpras', countFn: 'countChecklistSarprasLaporan', excelFn: 'exportChecklistSarprasLaporanExcel', pdfFn: 'exportChecklistSarprasLaporanPdf', dailyOnly: true },
   izin_tamu: { title: 'Izin Tamu Masuk', countFn: 'countIzinTamuLaporan', excelFn: 'exportIzinTamuLaporanExcel', pdfFn: 'exportIzinTamuLaporanPdf' },
   incident: { title: 'Incident & Gangguan Keamanan', countFn: 'countIncidentLaporan', excelFn: 'exportIncidentLaporanExcel', pdfFn: 'exportIncidentLaporanPdf' },
-  kendaraan: { title: 'Izin Kendaraan Masuk A', countFn: 'countKendaraanLaporan', excelFn: 'exportKendaraanLaporanExcel', pdfFn: 'exportKendaraanLaporanPdf' }
+  kendaraan: { title: 'Izin Kendaraan Masuk A', countFn: 'countKendaraanLaporan', excelFn: 'exportKendaraanLaporanExcel', pdfFn: 'exportKendaraanLaporanPdf' },
+  barang_keluar: { title: 'Barang Keluar', countFn: 'countBarangKeluarLaporan', excelFn: 'exportBarangKeluarLaporanExcel', pdfFn: 'exportBarangKeluarLaporanPdf' }
 };
 let reportModalState = { moduleKey: null, periodLabel: null, format: 'excel' };
 
@@ -1563,6 +1575,7 @@ function val(id) { return document.getElementById(id).value; }
 // MODUL: CHECKLIST SARPRAS (PRD Bab 7.2)
 // ════════════════════════════════════════════════════════
 function loadChecklistSarpras() {
+  ipgDfReset('cs');
   const c = document.getElementById('app-container');
   c.innerHTML = sectionHeader('Checklist Sarana & Prasarana', 'Item diambil otomatis dari Master Data — tinggal update kondisi & jumlah. Approval Danru → TL Keamanan.')
     + `<div class="mb-3 d-flex justify-content-end gap-2 flex-wrap">
@@ -1576,20 +1589,29 @@ function loadChecklistSarpras() {
        </div>
        <div class="card-ip">
          <h6 class="mb-2"><i class="bi bi-clipboard-check"></i> Riwayat Pemeriksaan</h6>
+         ${ipgDfBar('cs')}
          <div id="tblChecklist"></div>
        </div>`;
   loadKondisiSarprasTerkini();
   google.script.run.withSuccessHandler(res => {
     renderChecklistSarprasModuleDashboard(res.data || []);
+    csAllRows = res.data || [];
+    renderChecklistTable();
+  }).getAllData('CHECKLIST_SARPRAS');
+}
+let csAllRows = [];
+function renderChecklistTable() {
+  const f = ipgDfApply('cs', csAllRows);
+  {
     renderGenericTable('tblChecklist',
       [ {label:'Tanggal', render:r=>(r.Tanggal||'').slice(0,10)}, {label:'Shift', key:'Shift'}, {label:'Regu', key:'Regu'}, {label:'Pemeriksa', key:'Pemeriksa'},
         {label:'Jml Item', render:r=>{ try{return JSON.parse(r.ItemsJSON||'[]').length;}catch(e){return 0;} }},
         {label:'Item Rusak', render:r=>{ try{return JSON.parse(r.ItemsJSON||'[]').filter(it=>Number(it.rusak)>0).length;}catch(e){return 0;} }},
         {label:'Status', render:r=>statusPill(r.StatusApproval)} ],
-      (res.data||[]).sort((a,b)=> new Date(b.WaktuInput)-new Date(a.WaktuInput)),
+      f.rows.sort((a,b)=> new Date(b.WaktuInput)-new Date(a.WaktuInput)),
       row => checklistSarprasActions(row)
     );
-  }).getAllData('CHECKLIST_SARPRAS');
+  }
 }
 function loadKondisiSarprasTerkini() {
   google.script.run.withSuccessHandler(res => {
@@ -1726,6 +1748,7 @@ function cetakChecklistSarpras(id) {
 // MODUL: PATROLI — 2 lapis: Log Titik (tanpa approval) + Rekap Shift (Danru→TL), PRD 7.2
 // ════════════════════════════════════════════════════════
 function loadPatroli() {
+  ipgDfReset('rekap');
   const c = document.getElementById('app-container');
   c.innerHTML = sectionHeader('Patroli QR & GPS', 'Log titik tiap checkpoint (referensi) + Rekap per shift (Danru → TL Keamanan)')
     + `<div class="mb-3 d-flex justify-content-end gap-2 flex-wrap">
@@ -1743,19 +1766,28 @@ function loadPatroli() {
        </div>
        <div class="card-ip">
          <h6 class="mb-2"><i class="bi bi-file-earmark-text"></i> Rekap Patroli per Shift <span class="badge-prd">Danru → TL Keamanan</span></h6>
+         ${ipgDfBar('rekap')}
          <div id="tblRekapPatroli"></div>
        </div>`;
   loadPatroliDashboardDetail();
   loadLogPatroliList();
   google.script.run.withSuccessHandler(res => {
+    rekapAllRows = res.data || [];
+    renderRekapPatroliTable();
+  }).getAllData('REKAP_PATROLI');
+}
+let rekapAllRows = [];
+function renderRekapPatroliTable() {
+  const f = ipgDfApply('rekap', rekapAllRows);
+  {
     renderGenericTable('tblRekapPatroli',
       [ {label:'Nomor Rekap', key:'NoRekap'}, {label:'Tanggal', render:r=>(r.Tanggal||'').slice(0,10)}, {label:'Shift', key:'Shift'}, {label:'Regu', key:'Regu'},
         {label:'Jml Titik Discan', render:r=>{ try{return JSON.parse(r.TitikEntries||'[]').length;}catch(e){return 0;} }},
         {label:'Status', render:r=>statusPill(r.StatusApproval)} ],
-      (res.data||[]).sort((a,b)=> new Date(b.WaktuInput)-new Date(a.WaktuInput)),
+      f.rows.sort((a,b)=> new Date(b.WaktuInput)-new Date(a.WaktuInput)),
       row => withKoreksi('REKAP_PATROLI', row, rekapPatroliActions(row))
     );
-  }).getAllData('REKAP_PATROLI');
+  }
 }
 const SHIFT_ICON_PATROLI = { 'Pagi': 'bi-sun-fill', 'Sore': 'bi-cloud-sun-fill', 'Malam': 'bi-moon-stars-fill' };
 const SHIFT_JAM_PATROLI = { 'Pagi': '06.00 - 14.00', 'Sore': '14.00 - 21.00', 'Malam': '21.00 - 06.00' };
@@ -2277,6 +2309,7 @@ function cetakRekapPatroli(id) {
 // MODUL: IZIN TAMU MASUK (PRD Bab 7.2 — tanpa QR/surat)
 // ════════════════════════════════════════════════════════
 function loadIzinTamu() {
+  ipgDfReset('tamu');
   const c = document.getElementById('app-container');
   c.innerHTML = sectionHeader('Izin Tamu Masuk', 'Email otomatis ke SPS/TL Keamanan & Admin saat diajukan → Approval TL Keamanan (email ke pemohon) → Check-in/out oleh Satpam')
     + `<div class="mb-3 d-flex justify-content-end gap-2 flex-wrap">
@@ -2284,20 +2317,28 @@ function loadIzinTamu() {
          <button class="btn btn-primary-ip" onclick="openIzinTamuForm()"><i class="bi bi-plus-lg"></i> Ajukan Izin Tamu</button>
        </div>
        <div id="itDashboardWrap" class="row g-3 mb-3"></div>
+       ${ipgDfBar('tamu')}
        <div id="tblIzinTamu"></div>`;
   google.script.run.withSuccessHandler(res => {
-    const rows = res.data || [];
-    renderIzinTamuDashboard(rows);
+    itAllRows = res.data || [];
+    renderIzinTamuDashboard(itAllRows);
+    renderIzinTamuTable();
+  }).getAllData('IZIN_TAMU');
+}
+let itAllRows = [];
+function renderIzinTamuTable() {
+  const f = ipgDfApply('tamu', itAllRows);
+  {
     renderGenericTable('tblIzinTamu',
       [ {label:'No. Pengajuan', key:'NoPengajuan'}, {label:'Tempat/Masuk Ke', key:'TempatMasukKe'}, {label:'Zona', key:'Zona'},
         {label:'Jenis', key:'JenisTamu'}, {label:'Nama Perusahaan', render:r=>r.NamaPerusahaan||'-'}, {label:'Jumlah', key:'Jumlah'},
         {label:'Menemui', key:'MenemuiNama'},
         {label:'Email', render:r=> r.EmailTerkirim==='Ya' ? '<span class="pill pill-success">Terkirim</span>' : '<span class="pill pill-neutral">-</span>'},
         {label:'Approval', render:r=>statusPill(r.StatusApproval) + alasanTolakHtml(r)}, {label:'Kunjungan', render:r=>statusPill(r.StatusKunjungan)} ],
-      rows.sort((a,b)=> (b.NoPengajuan||'').localeCompare(a.NoPengajuan||'')),
+      f.rows.sort((a,b)=> (b.NoPengajuan||'').localeCompare(a.NoPengajuan||'')),
       row => izinTamuActions(row)
     );
-  }).getAllData('IZIN_TAMU');
+  }
 }
 function renderChecklistSarprasModuleDashboard(rows) {
   const todayStr = ipgToday();
@@ -2518,6 +2559,7 @@ const ZONA_LIST = ['Zona A', 'Zona B', 'Zona C', 'Zona D'];
 const KATEGORI_IZIN_KENDARAAN = ['Diijinkan (dengan batas waktu)', 'Tidak Diijinkan', 'Sekedar Menurunkan Barang', 'Kendaraan/Alat Berat'];
 
 function loadKendaraan() {
+  ipgDfReset('kendaraan');
   const c = document.getElementById('app-container');
   c.innerHTML = sectionHeader('Izin Kendaraan Masuk A', 'Pengajuan → Approval SPS/TL Keamanan → Check-In/Out Satpam di gerbang')
     + `<div class="mb-3 d-flex justify-content-end gap-2 flex-wrap">
@@ -2525,20 +2567,28 @@ function loadKendaraan() {
          <button class="btn btn-primary-ip" onclick="openKendaraanForm()"><i class="bi bi-plus-lg"></i> Ajukan Izin Kendaraan</button>
        </div>
        <div id="kDashboardWrap" class="row g-3 mb-3"></div>
+       ${ipgDfBar('kendaraan')}
        <div id="tblKendaraan"></div>`;
   google.script.run.withSuccessHandler(res => {
-    const rows = res.data || [];
-    renderKendaraanDashboard(rows);
+    kAllRows = res.data || [];
+    renderKendaraanDashboard(kAllRows);
+    renderKendaraanTable();
+  }).getAllData('IZIN_KENDARAAN_MASUK');
+}
+let kAllRows = [];
+function renderKendaraanTable() {
+  const f = ipgDfApply('kendaraan', kAllRows);
+  {
     renderGenericTable('tblKendaraan',
       [ {label:'No. Izin', key:'NoIzin'}, {label:'Plat', key:'PlatNomor'}, {label:'Pemohon', key:'Pemohon'}, {label:'Zona', key:'Zona'},
         {label:'Kategori', key:'Kategori'},
         {label:'Temuan', render:r=> r.AdaTemuan==='Ya' ? '<span class="pill pill-danger">Ya</span>':'<span class="pill pill-neutral">Tidak</span>'},
         {label:'Approval', render:r=>statusPill(r.StatusApproval)},
         {label:'Kunjungan', render:r=>statusPill(r.StatusKunjungan)} ],
-      rows.sort((a,b)=> (b.NoIzin||'').localeCompare(a.NoIzin||'')),
+      f.rows.sort((a,b)=> (b.NoIzin||'').localeCompare(a.NoIzin||'')),
       row => kendaraanActions(row)
     );
-  }).getAllData('IZIN_KENDARAAN_MASUK');
+  }
 }
 function renderKendaraanDashboard(rows) {
   const todayStr = ipgToday();
@@ -2668,11 +2718,15 @@ const KATEGORI_BARANG_KELUAR = ['Dimusnahkan', 'Dipergunakan', 'Diserahkan', 'Di
 
 let bkAllRows = [];
 function loadBarangKeluar() {
+  ipgDfReset('bk');
   const c = document.getElementById('app-container');
   c.innerHTML = sectionHeader('Pengajuan Barang Keluar', 'Alur: SPS Bidang ajukan → SPS Keamanan approval digital → cetak surat → Danru periksa fisik & ttd/stempel basah → konfirmasi keluar → (kategori Diperbaiki) konfirmasi kembali → SPS Keamanan close', 'v3.2')
-    + actionBar('Ajukan Barang Keluar', 'openBarangKeluarForm', 'BARANG_KELUAR', 'Pengajuan_Barang_Keluar', null,
-        ['NoSurat', 'Tanggal', 'SPSBidangPemohon', 'JabatanPemohon', 'Tujuan', 'Kategori'])
+    + `<div class="mb-3 d-flex justify-content-end gap-2 flex-wrap">
+         <button class="btn btn-outline-ip" onclick="openUnduhLaporanModal('barang_keluar')"><i class="bi bi-file-earmark-arrow-down"></i> Unduh Laporan</button>
+         <button class="btn btn-primary-ip" onclick="openBarangKeluarForm()"><i class="bi bi-plus-lg"></i> Ajukan Barang Keluar</button>
+       </div>`
     + `<div id="bkDashboardWrap" class="row g-3 mb-3"></div>`
+    + ipgDfBar('bk')
     + `<div class="mb-3"><input type="text" class="form-control" id="bkSearchInput" placeholder="Cari No. Surat, SPS Bidang, Kategori, atau nama barang..." oninput="renderBarangKeluarTable()"></div>`
     + `<div id="tblBarangKeluar"></div>`;
   google.script.run.withSuccessHandler(res => {
@@ -2683,7 +2737,7 @@ function loadBarangKeluar() {
 }
 function renderBarangKeluarTable() {
   const q = (val('bkSearchInput') || '').toLowerCase();
-  const rows = bkAllRows.filter(r => {
+  const rows = ipgDfApply('bk', bkAllRows).rows.filter(r => {
     if (!q) return true;
     let itemNames = '';
     try { itemNames = JSON.parse(r.ItemsJSON||'[]').map(it=>it.namaBarang).join(' '); } catch(e) {}
@@ -3082,6 +3136,7 @@ function loadIncidentDashboardDetail() {
 }
 let incAllRows = [];
 function loadIncident() {
+  ipgDfReset('inc');
   const c = document.getElementById('app-container');
   c.innerHTML = sectionHeader('Incident & Gangguan Keamanan', 'Sumber otomatis: Mutasi Jaga (Section D & B) & Kendaraan. Ditutup oleh TL Keamanan/SPS Keamanan.')
     + `<div class="mb-3 d-flex justify-content-end gap-2 flex-wrap">
@@ -3089,6 +3144,7 @@ function loadIncident() {
          <button class="btn btn-primary-ip" onclick="openIncidentForm()"><i class="bi bi-plus-lg"></i> Lapor Incident Manual</button>
        </div>
        <div id="incidentDashboardWrap"><div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm"></span> Memuat dashboard...</div></div>
+       ${ipgDfBar('inc')}
        <div class="mb-3"><input type="text" class="form-control" id="incSearchInput" placeholder="Cari No. Insiden, lokasi, kategori, uraian, atau pelapor..." oninput="renderIncidentTable()"></div>
        <div id="tblIncident"></div>`;
   loadIncidentDashboardDetail();
@@ -3099,7 +3155,7 @@ function loadIncident() {
 }
 function renderIncidentTable() {
   const q = (val('incSearchInput') || '').toLowerCase();
-  const rows = incAllRows.filter(r => {
+  const rows = ipgDfApply('inc', incAllRows).rows.filter(r => {
     if (!q) return true;
     const hay = `${r.NoInsiden||''} ${r.Lokasi||''} ${r.Kategori||''} ${r.UraianKejadian||''} ${r.Pelapor||''}`.toLowerCase();
     return hay.includes(q);
@@ -4839,4 +4895,53 @@ function ipgFotoCetak(url) {
   const cadangan = ipgDriveFileId(url) ? 'https://drive.google.com/file/d/' + ipgDriveFileId(url) + '/view' : String(url || '');
   return `<img src="${escHtmlIpg(src)}" referrerpolicy="no-referrer" style="width:100%;max-height:360px;object-fit:contain;border-radius:6px;border:1px solid #ccc;"
     onerror="this.outerHTML='<div style=&quot;font-size:11px;color:#888;border:1px dashed #ccc;border-radius:6px;padding:10px;&quot;>Foto tidak dapat ditampilkan. Buka: ${escHtmlIpg(cadangan).replace(/'/g, '&#39;')}</div>'">`;
+}
+
+
+// ════════════════════════════════════════════════════════
+// FILTER TANGGAL SERAGAM di tabel modul — bawaan HARI INI, bisa pilih tanggal lain atau "Semua tanggal".
+// Data yang masih diproses (menunggu approval / masih di area) dari tanggal lain diberi pengingat.
+// ════════════════════════════════════════════════════════
+const IPG_DF = {};
+const IPG_DF_CFG = {
+  // def: tanggal bawaan · cocok: apakah baris milik tanggal t · proses: masih perlu tindakan · render: gambar ulang tabel
+  ba:        { label: 'Tanggal dinas', def: () => ipgTanggalDinas(ipgShiftNow()), cocok: (r, t) => ipgDinasOf(r) === t, proses: r => r.StatusApproval !== 'Selesai', render: () => renderMutasiJagaTable() },
+  cs:        { label: 'Tanggal dinas', def: () => ipgTanggalDinas(ipgShiftNow()), cocok: (r, t) => ipgDinasOf(r) === t, proses: r => r.StatusApproval !== 'Selesai', render: () => renderChecklistTable() },
+  rekap:     { label: 'Tanggal dinas', def: () => ipgTanggalDinas(ipgShiftNow()), cocok: (r, t) => ipgDinasOf(r) === t, proses: r => r.StatusApproval !== 'Selesai', render: () => renderRekapPatroliTable() },
+  tamu:      { label: 'Tanggal kunjungan', def: () => ipgToday(), cocok: (r, t) => String(r.Tanggal || '').slice(0, 10) === t, proses: r => r.StatusApproval === 'Diajukan' || r.StatusKunjungan === 'Di Area', render: () => renderIzinTamuTable() },
+  kendaraan: { label: 'Tanggal berlaku', def: () => ipgToday(),
+               cocok: (r, t) => { const a = String(r.TanggalMulai || '').slice(0, 10), b = String(r.TanggalSelesai || r.TanggalMulai || '').slice(0, 10); return a && a <= t && t <= (b || a); },
+               proses: r => r.StatusApproval === 'Diajukan' || r.StatusKunjungan === 'Di Area', render: () => renderKendaraanTable() },
+  bk:        { label: 'Tanggal', def: () => ipgToday(), cocok: (r, t) => String(r.Tanggal || '').slice(0, 10) === t, proses: r => !['Selesai', 'Ditolak'].includes(r.Status), render: () => renderBarangKeluarTable() },
+  inc:       { label: 'Tanggal kejadian', def: () => ipgToday(), cocok: (r, t) => String(r.TanggalJam || '').slice(0, 10) === t, proses: r => r.Status !== 'Selesai', render: () => renderIncidentTable() }
+};
+/** Tanggal bawaan dipasang saat modul dibuka dari menu; muat ulang setelah simpan/approve tetap di tanggal yang dipilih */
+function ipgDfReset(key) { if (!(key in IPG_DF)) IPG_DF[key] = IPG_DF_CFG[key].def(); }
+function ipgDfBar(key) {
+  const cfg = IPG_DF_CFG[key], t = IPG_DF[key] || '';
+  return `<div class="ipg-df mb-2" id="dfbar_${key}">
+    <label class="small text-muted mb-0" for="df_${key}">${cfg.label}</label>
+    <input type="date" class="form-control form-control-sm" style="width:auto;" id="df_${key}" value="${t}" onchange="ipgDfSet('${key}', this.value)">
+    <button type="button" class="btn btn-outline-ip btn-sm-ip" onclick="ipgDfSet('${key}', IPG_DF_CFG['${key}'].def())">Hari ini</button>
+    <button type="button" class="btn btn-sm-ip ${t ? 'btn-outline-ip' : 'btn-primary-ip'}" id="dfall_${key}" onclick="ipgDfSet('${key}', '')">Semua tanggal</button>
+    <div class="w-100 small" id="dfinfo_${key}"></div>
+  </div>`;
+}
+function ipgDfSet(key, v) {
+  IPG_DF[key] = v || '';
+  const inp = document.getElementById('df_' + key), btn = document.getElementById('dfall_' + key);
+  if (inp) inp.value = IPG_DF[key];
+  if (btn) { btn.classList.toggle('btn-primary-ip', !IPG_DF[key]); btn.classList.toggle('btn-outline-ip', !!IPG_DF[key]); }
+  IPG_DF_CFG[key].render();
+}
+/** Saring baris sesuai tanggal terpilih + tulis pengingat data yang masih diproses di tanggal lain */
+function ipgDfApply(key, rows) {
+  const cfg = IPG_DF_CFG[key], t = IPG_DF[key] || '';
+  const info = document.getElementById('dfinfo_' + key);
+  if (!t) { if (info) info.innerHTML = `<span class="text-muted">Menampilkan semua tanggal (${rows.length} data).</span>`; return { rows: rows.slice() }; }
+  const hasil = rows.filter(r => cfg.cocok(r, t));
+  const lain = rows.filter(r => !cfg.cocok(r, t) && cfg.proses(r));
+  if (info) info.innerHTML = `<span class="text-muted">${hasil.length} data pada ${ipgTglPendek(t)}.</span>`
+    + (lain.length ? ` <span class="ipg-df-warn"><i class="bi bi-hourglass-split"></i> ${lain.length} data dari tanggal lain masih diproses — <a href="#" onclick="ipgDfSet('${key}','');return false;">lihat semua</a></span>` : '');
+  return { rows: hasil };
 }

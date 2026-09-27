@@ -325,3 +325,8 @@ h1,h2,h3,h4,h5,h6 { font-family: 'Poppins', sans-serif; font-weight: 600; color:
 .aksi-batal { color: #E53935 !important; border-color: #E53935 !important; }
 .aksi-batal:hover { background: #FDE8E8 !important; }
 .aksi-tanda { font-size: .72rem; color: var(--text-muted, #6B7A90); white-space: nowrap; }
+
+/* Filter tanggal seragam di tabel modul */
+.ipg-df { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; }
+.ipg-df .form-control { min-width: 140px; }
+.ipg-df-warn { color: #B26A00; font-weight: 600; }
