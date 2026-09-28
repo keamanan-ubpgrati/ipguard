@@ -50,7 +50,7 @@ const MENU = [
   ]}
 ];
 /** Versi tampilan/fitur — dinaikkan di setiap paket update frontend */
-const IPG_VERSI = '3.3 · 2026.09.27';
+const IPG_VERSI = '3.4 · 2026.09.29';
 
 const ROLE_LABEL = {
   ADMIN: 'Admin', SPS_KEAMANAN: 'SPS Keamanan', TL_KEAMANAN: 'TL Keamanan', SATPAM: 'Satpam',
