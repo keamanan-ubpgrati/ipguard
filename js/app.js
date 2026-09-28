@@ -1116,6 +1116,7 @@ function loadMutasiJaga() {
        </div>
        <div class="card-ip">
          <h6 class="mb-2"><i class="bi bi-file-earmark-text"></i> BA Serah Terima Jurnal Pos Jaga <span class="badge-prd">Approval Danru Lama → Danru Baru → TL Keamanan</span></h6>
+         <div class="small text-muted mb-2"><i class="bi bi-info-circle"></i> Buat Berita Acara setelah Rolling ke-4 (4x rolling) pada shift ini selesai diisi.</div>
          ${ipgDfBar('ba')}
          <div id="tblMutasiJaga"></div>
        </div>`;
@@ -1503,6 +1504,7 @@ function renderSectionBTable() {
 function openMutasiJagaForm() {
   openFormModal('Mutasi Jaga Pos — Serah Terima', `
     <form id="formMutasiJaga" onsubmit="return submitMutasiJagaForm(event)">
+      <div class="small text-muted mb-2"><i class="bi bi-info-circle"></i> Buat Berita Acara setelah Rolling ke-4 (4x rolling) pada shift ini selesai diisi.</div>
       <div class="row g-2">
         <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="mjTanggal" required value="${ipgToday()}"></div>
         <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="mjShift" required>${selectOptions(OPT_SHIFT, ipgShiftNow(60))}</select></div>
@@ -1766,6 +1768,7 @@ function loadPatroli() {
        </div>
        <div class="card-ip">
          <h6 class="mb-2"><i class="bi bi-file-earmark-text"></i> Rekap Patroli per Shift <span class="badge-prd">Danru → TL Keamanan</span></h6>
+         <div class="small text-muted mb-2"><i class="bi bi-info-circle"></i> Buat Rekap Patroli setelah Putaran ke-4 (4x putaran) pada shift ini selesai dilaksanakan.</div>
          ${ipgDfBar('rekap')}
          <div id="tblRekapPatroli"></div>
        </div>`;
@@ -2195,6 +2198,7 @@ function submitLogPatroliForm(evt) {
 function openRekapPatroliForm() {
   openFormModal('Buat Rekap Patroli Shift Ini', `
     <form id="formRekapPatroli" onsubmit="return submitRekapPatroliForm(event)">
+      <div class="small text-muted mb-2"><i class="bi bi-info-circle"></i> Buat Rekap Patroli setelah Putaran ke-4 (4x putaran) pada shift ini selesai dilaksanakan.</div>
       <div class="row g-2">
         <div class="col-4"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="rpTanggal" required value="${ipgToday()}"></div>
         <div class="col-4"><label class="form-label">Shift</label><select class="form-select" id="rpShift" required>${selectOptions(OPT_SHIFT, ipgShiftNow(60))}</select></div>
