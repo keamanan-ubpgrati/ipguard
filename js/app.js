@@ -169,12 +169,26 @@ function compressImageFile_(file) {
 // ════════════════════════════════════════════════════════
 // AUTENTIKASI
 // ════════════════════════════════════════════════════════
-function togglePasswordVisibility() {
-  const input = document.getElementById('loginPassword');
-  const icon = document.getElementById('loginPasswordEyeIcon');
+/** Toggle ikon mata pada kolom password mana pun — dipakai login, daftar akun, ganti/reset password */
+function toggleEyePw(inputId, iconId) {
+  const input = document.getElementById(inputId);
+  const icon = document.getElementById(iconId);
+  if (!input) return;
   const showing = input.type === 'text';
   input.type = showing ? 'password' : 'text';
-  icon.className = showing ? 'bi bi-eye' : 'bi bi-eye-slash';
+  if (icon) icon.className = showing ? 'bi bi-eye' : 'bi bi-eye-slash';
+}
+function togglePasswordVisibility() { toggleEyePw('loginPassword', 'loginPasswordEyeIcon'); }
+/** Bungkus 1 input password jadi input-group + tombol mata — dipakai openChangePasswordModal, dsb. */
+function pwEyeField(label, inputId, opts) {
+  opts = opts || {};
+  const attrs = `${opts.required !== false ? 'required' : ''} ${opts.minlength ? `minlength="${opts.minlength}"` : ''} ${opts.autofocus ? 'autofocus' : ''}`;
+  const eyeId = inputId + 'EyeIcon';
+  return `<label class="form-label">${label}</label>
+    <div class="input-group">
+      <input type="password" class="form-control" id="${inputId}" ${attrs}>
+      <button type="button" class="btn btn-outline-ip" onclick="toggleEyePw('${inputId}','${eyeId}')" tabindex="-1"><i class="bi bi-eye" id="${eyeId}"></i></button>
+    </div>`;
 }
 function handleLogin(evt) {
   evt.preventDefault();
@@ -532,18 +546,9 @@ function openProfilePhotoModal() {
 function openChangePasswordModal() {
   openFormModal('Ganti Password', `
     <form onsubmit="return handleChangePassword(event)">
-      <div class="mb-2">
-        <label class="form-label">Password Lama</label>
-        <input type="password" class="form-control" id="cpOldPassword" required autofocus>
-      </div>
-      <div class="mb-2">
-        <label class="form-label">Password Baru</label>
-        <input type="password" class="form-control" id="cpNewPassword" minlength="6" required>
-      </div>
-      <div class="mb-3">
-        <label class="form-label">Ulangi Password Baru</label>
-        <input type="password" class="form-control" id="cpNewPasswordConfirm" minlength="6" required>
-      </div>
+      <div class="mb-2">${pwEyeField('Password Lama', 'cpOldPassword', { autofocus: true })}</div>
+      <div class="mb-2">${pwEyeField('Password Baru', 'cpNewPassword', { minlength: 6 })}</div>
+      <div class="mb-3">${pwEyeField('Ulangi Password Baru', 'cpNewPasswordConfirm', { minlength: 6 })}</div>
       <div id="cpResult" class="mb-2"></div>
       <button type="submit" class="btn btn-primary-ip w-100" id="cpSubmitBtn"><i class="bi bi-check2-circle"></i> Simpan Password Baru</button>
     </form>
@@ -4314,13 +4319,19 @@ function loadAdministrasi() {
           </div>` },
         {label:'Email', render:r=>(r.Email ? escHtmlIpg(r.Email) : '-') + (emailGanda(r) ? ' <span class="pill pill-danger">ganda</span>' : '')}, {label:'Status', render:r=>statusPill(r.Status)} ],
       (res.data||[]),
-      row => row.Status === 'Pending'
+      row => (row.Status === 'Pending'
         ? `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('approveAccount',['${row.ID}',true],null,loadAdministrasi)">Setujui</button>
            <button class="btn btn-outline-ip btn-sm-ip" onclick="callServer('approveAccount',['${row.ID}',false],'Akun ditolak',loadAdministrasi)">Tolak</button>`
         : (row.Status === 'Aktif' ? `<button class="btn btn-outline-ip btn-sm-ip" onclick="callServer('updateFieldById',['USERS','${row.ID}',{Status:'Nonaktif'}],'Akun dinonaktifkan',loadAdministrasi)">Nonaktifkan</button>`
-           : `<button class="btn btn-outline-ip btn-sm-ip" onclick="callServer('updateFieldById',['USERS','${row.ID}',{Status:'Aktif'}],'Akun diaktifkan',loadAdministrasi)">Aktifkan</button>`)
+           : `<button class="btn btn-outline-ip btn-sm-ip" onclick="callServer('updateFieldById',['USERS','${row.ID}',{Status:'Aktif'}],'Akun diaktifkan',loadAdministrasi)">Aktifkan</button>`))
+        + ` <button class="btn btn-outline-ip btn-sm-ip" title="Buka kalau akun ini terkunci akibat 5x salah login" onclick="resetLoginLockUser('${escHtmlIpg(row.Username)}')"><i class="bi bi-unlock"></i> Buka Kunci</button>`
     );
   }).getAllData('USERS');
+}
+/** Admin: reset kunci login (5x gagal → terkunci 15 menit) tanpa perlu buka Apps Script */
+function resetLoginLockUser(username) {
+  openConfirmModal(`Reset kunci login untuk akun "${username}"?\n\nDipakai kalau user ini gagal login 5x berturut-turut dan sedang terkunci sementara (15 menit). Kalau akun tidak sedang terkunci, tombol ini tidak berpengaruh apa-apa.`, () =>
+    callServer('resetLoginLock', [username, AppState.user.Nama], null, loadAdministrasi, 'Mereset kunci login...'));
 }
 async function handleLaporanLogoUpload(evt) {
   const file = evt.target.files[0];
