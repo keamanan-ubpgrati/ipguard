@@ -1566,7 +1566,7 @@ function openMutasiJagaForm() {
         <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="mjTanggal" required value="${ipgToday()}"></div>
         <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="mjShift" required>${selectOptions(OPT_SHIFT, ipgShiftNow(60))}</select></div>
         <div class="col-12"><div class="small" id="mjDinasInfo"></div></div>
-        <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="mjRegu" required>${selectOptions(OPT_REGU)}</select></div>
+        <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="mjRegu" required>${selectOptions(OPT_REGU, ipgReguAktif(ipgShiftNow(60), ipgTanggalMulaiShift(ipgShiftNow(60))))}</select></div>
         <div class="col-6"><label class="form-label">Pos Jaga</label><select class="form-select" id="mjPos" required>${selectOptions(OPT_POS)}</select></div>
         <div class="col-12">
           <span class="section-chip">A</span><b>Informasi Shift & Regu Petugas</b>
@@ -1703,7 +1703,7 @@ function openChecklistForm() {
         <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="csTanggal" required value="${ipgToday()}"></div>
         <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="csShift" required>${selectOptions(OPT_SHIFT, ipgShiftNow())}</select></div>
         <div class="col-12"><div class="small" id="csDinasInfo"></div></div>
-        <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="csRegu" required>${selectOptions(OPT_REGU)}</select></div>
+        <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="csRegu" required>${selectOptions(OPT_REGU, ipgReguAktif(ipgShiftNow(), ipgTanggalMulaiShift(ipgShiftNow())))}</select></div>
         <div class="col-6"><label class="form-label">Pemeriksa</label><input type="text" class="form-control" id="csPemeriksa" list="personelNamaOptions" required value="${AppState.user.Nama}"></div>
       </div>
       <div id="csItemsWrap"><div class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span> Memuat daftar Sarpras dari Master Data...</div></div>
@@ -2259,7 +2259,7 @@ function openRekapPatroliForm() {
       <div class="row g-2">
         <div class="col-4"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="rpTanggal" required value="${ipgToday()}"></div>
         <div class="col-4"><label class="form-label">Shift</label><select class="form-select" id="rpShift" required>${selectOptions(OPT_SHIFT, ipgShiftNow(60))}</select></div>
-        <div class="col-4"><label class="form-label">Regu</label><select class="form-select" id="rpRegu" required>${selectOptions(OPT_REGU)}</select></div>
+        <div class="col-4"><label class="form-label">Regu</label><select class="form-select" id="rpRegu" required>${selectOptions(OPT_REGU, ipgReguAktif(ipgShiftNow(60), ipgTanggalMulaiShift(ipgShiftNow(60))))}</select></div>
         <div class="col-12"><div class="small" id="rpDinasInfo"></div></div>
         <div class="col-12">
           <span class="pill pill-info">Matrix 4 Putaran × Titik Patroli — otomatis dikompilasi dari Log Titik</span>
@@ -3367,7 +3367,7 @@ function openIncidentForm() {
       <div class="row g-2">
         <div class="col-6"><label class="form-label">Lokasi</label><input type="text" class="form-control" id="incLokasi" placeholder="misal: Area Parkir Belakang" required></div>
         <div class="col-6"><label class="form-label">Kategori</label><select class="form-select" id="incKategori" required>${selectOptions(KATEGORI_INCIDENT)}</select></div>
-        <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="incRegu">${selectOptions(OPT_REGU)}</select></div>
+        <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="incRegu">${selectOptions(OPT_REGU, ipgReguAktif(ipgShiftNow(), ipgTanggalMulaiShift(ipgShiftNow())))}</select></div>
         <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="incShift">${selectOptions(OPT_SHIFT, ipgShiftNow())}</select></div>
         <div class="col-6"><label class="form-label">Tingkat Risiko</label><select class="form-select" id="incRisiko" required>${selectOptions(TINGKAT_RISIKO_LIST, 'Sedang')}</select></div>
         <div class="col-6"><label class="form-label">Pelapor</label><input type="text" class="form-control" id="incPelapor" list="personelNamaOptions" value="${AppState.user.Nama}" required></div>
