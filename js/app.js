@@ -1191,33 +1191,18 @@ function ipgTanggalDinas(shift) {
 }
 /**
  * Regu yang terjadwal aktif untuk shift+tanggal tertentu, berdasar pola rotasi 4 regu
- * (dikonfirmasi dari jadwal fisik TL Keamanan): tiap regu menjalani siklus 8 hari
- * Pagi-Pagi-Libur-Libur-Malam-Malam-Sore-Sore, lalu ulang dari Pagi lagi.
- *
- * PENTING: jadwal fisik diterbitkan per periode (bukan satu siklus tak putus selamanya) — siklus
- * di atas TERULANG DARI AWAL (mulai lagi dari C di Pagi) setiap kali ada jadwal baru diterbitkan,
- * meski jaraknya dari jadwal sebelumnya bukan kelipatan 8 hari. Makanya dipakai daftar "segmen":
- * tiap segmen punya tanggal mulai berlaku sendiri sebagai titik nol siklus 8 harinya.
- * Kalau nanti ada jadwal baru lagi (reset lagi), tambahkan satu baris baru di IPG_REGU_SEGMENTS
- * dengan tanggal mulai berlakunya.
+ * (dikonfirmasi dari jadwal fisik TL Keamanan, tabel 1-15 Okt 2026): tiap regu menjalani
+ * siklus 8 hari Pagi-Pagi-Libur-Libur-Malam-Malam-Sore-Sore, lalu ulang dari Pagi lagi,
+ * BERJALAN TERUS TANPA RESET dari titik acuan 1 Oktober 2026 (Pagi=C, Sore=D, Malam=A, Libur=B).
+ * Kalau suatu saat jadwal fisik ternyata di-reset ulang (tidak lagi mengikuti siklus murni ini),
+ * kasih tahu tanggal & regu pada titik itu supaya anchor-nya disesuaikan.
  *
  * Dipakai hanya sebagai NILAI DEFAULT di dropdown Regu (tetap bisa diganti manual oleh petugas,
  * misal untuk input susulan, tukar jaga, atau pertukaran jadwal).
  */
 const IPG_REGU_CYCLE = ['Pagi', 'Pagi', 'Libur', 'Libur', 'Malam', 'Malam', 'Sore', 'Sore'];
-const IPG_REGU_PHASE0 = { A: 4, B: 2, C: 0, D: 6 }; // posisi tiap regu di siklus pada hari mulai tiap segmen
-const IPG_REGU_SEGMENTS = [
-  { mulai: '2026-10-01' }, // jadwal periode 1-15 Okt 2026
-  { mulai: '2026-10-16' }  // jadwal periode 16 Okt 2026 dst. (reset ulang ke C di Pagi)
-];
-function ipgReguAnchorFor_(hariIni) {
-  let anchor = ipgParseYmd(IPG_REGU_SEGMENTS[0].mulai);
-  for (const seg of IPG_REGU_SEGMENTS) {
-    const mulai = ipgParseYmd(seg.mulai);
-    if (hariIni >= mulai) anchor = mulai;
-  }
-  return anchor;
-}
+const IPG_REGU_PHASE0 = { A: 4, B: 2, C: 0, D: 6 }; // posisi tiap regu di siklus pada tanggal anchor
+const IPG_REGU_ANCHOR = new Date(2026, 9, 1); // 1 Oktober 2026 (bulan 0-based: 9 = Oktober)
 /** Tanggal kalender MULAI shift yang sedang berjalan — untuk Malam yang masih berlangsung dini hari
  * (00.00-11.59), shift itu dimulai KEMARIN, bukan hari ini (kebalikan dari ipgTanggalDinas). */
 function ipgTanggalMulaiShift(shift) {
@@ -1229,8 +1214,7 @@ function ipgReguAktif(shift, tanggalStr) {
   try {
     const tgl = tanggalStr ? ipgParseYmd(tanggalStr) : new Date();
     const hariIni = new Date(tgl.getFullYear(), tgl.getMonth(), tgl.getDate());
-    const anchor = ipgReguAnchorFor_(hariIni);
-    const dayIndex = Math.round((hariIni - anchor) / 86400000);
+    const dayIndex = Math.round((hariIni - IPG_REGU_ANCHOR) / 86400000);
     for (const regu of OPT_REGU) {
       const pos = (((dayIndex + IPG_REGU_PHASE0[regu]) % 8) + 8) % 8;
       if (IPG_REGU_CYCLE[pos] === shift) return regu;
