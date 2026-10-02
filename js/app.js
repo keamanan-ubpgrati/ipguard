@@ -1190,21 +1190,47 @@ function ipgTanggalDinas(shift) {
   return ipgYmd(d);
 }
 /**
- * Regu yang terjadwal aktif untuk shift+tanggal tertentu, berdasar pola rotasi kontinu 4 regu
+ * Regu yang terjadwal aktif untuk shift+tanggal tertentu, berdasar pola rotasi 4 regu
  * (dikonfirmasi dari jadwal fisik TL Keamanan): tiap regu menjalani siklus 8 hari
  * Pagi-Pagi-Libur-Libur-Malam-Malam-Sore-Sore, lalu ulang dari Pagi lagi.
- * Anchor: Jumat 16 Oktober 2026 — Pagi=C, Sore=D, Malam=A, Libur=B.
+ *
+ * PENTING: jadwal fisik diterbitkan per periode (bukan satu siklus tak putus selamanya) — siklus
+ * di atas TERULANG DARI AWAL (mulai lagi dari C di Pagi) setiap kali ada jadwal baru diterbitkan,
+ * meski jaraknya dari jadwal sebelumnya bukan kelipatan 8 hari. Makanya dipakai daftar "segmen":
+ * tiap segmen punya tanggal mulai berlaku sendiri sebagai titik nol siklus 8 harinya.
+ * Kalau nanti ada jadwal baru lagi (reset lagi), tambahkan satu baris baru di IPG_REGU_SEGMENTS
+ * dengan tanggal mulai berlakunya.
+ *
  * Dipakai hanya sebagai NILAI DEFAULT di dropdown Regu (tetap bisa diganti manual oleh petugas,
- * misal untuk input susulan atau pertukaran jadwal/tukar jaga).
+ * misal untuk input susulan, tukar jaga, atau pertukaran jadwal).
  */
-const IPG_REGU_ANCHOR = new Date(2026, 9, 16); // 16 Oktober 2026 (bulan 0-based: 9 = Oktober)
 const IPG_REGU_CYCLE = ['Pagi', 'Pagi', 'Libur', 'Libur', 'Malam', 'Malam', 'Sore', 'Sore'];
-const IPG_REGU_PHASE0 = { A: 4, B: 2, C: 0, D: 6 }; // posisi tiap regu di siklus pada tanggal anchor
+const IPG_REGU_PHASE0 = { A: 4, B: 2, C: 0, D: 6 }; // posisi tiap regu di siklus pada hari mulai tiap segmen
+const IPG_REGU_SEGMENTS = [
+  { mulai: '2026-10-01' }, // jadwal periode 1-15 Okt 2026
+  { mulai: '2026-10-16' }  // jadwal periode 16 Okt 2026 dst. (reset ulang ke C di Pagi)
+];
+function ipgReguAnchorFor_(hariIni) {
+  let anchor = ipgParseYmd(IPG_REGU_SEGMENTS[0].mulai);
+  for (const seg of IPG_REGU_SEGMENTS) {
+    const mulai = ipgParseYmd(seg.mulai);
+    if (hariIni >= mulai) anchor = mulai;
+  }
+  return anchor;
+}
+/** Tanggal kalender MULAI shift yang sedang berjalan — untuk Malam yang masih berlangsung dini hari
+ * (00.00-11.59), shift itu dimulai KEMARIN, bukan hari ini (kebalikan dari ipgTanggalDinas). */
+function ipgTanggalMulaiShift(shift) {
+  const d = new Date();
+  if (shift === 'Malam' && d.getHours() < 12) d.setDate(d.getDate() - 1);
+  return ipgYmd(d);
+}
 function ipgReguAktif(shift, tanggalStr) {
   try {
     const tgl = tanggalStr ? ipgParseYmd(tanggalStr) : new Date();
     const hariIni = new Date(tgl.getFullYear(), tgl.getMonth(), tgl.getDate());
-    const dayIndex = Math.round((hariIni - IPG_REGU_ANCHOR) / 86400000);
+    const anchor = ipgReguAnchorFor_(hariIni);
+    const dayIndex = Math.round((hariIni - anchor) / 86400000);
     for (const regu of OPT_REGU) {
       const pos = (((dayIndex + IPG_REGU_PHASE0[regu]) % 8) + 8) % 8;
       if (IPG_REGU_CYCLE[pos] === shift) return regu;
@@ -1477,7 +1503,7 @@ function openJurnalForm() {
         <div class="col-12"><div class="small" id="jpDinasInfo"></div></div>
         <div class="col-6"><label class="form-label">Rolling ke</label><select class="form-select" id="jpRollingKe" required><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
         <div class="col-6"><label class="form-label">Jam Rolling</label><input type="text" class="form-control" value="Otomatis saat disimpan" disabled></div>
-        <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="jpRegu" required>${selectOptions(OPT_REGU, ipgReguAktif(ipgShiftNow(), ipgToday()))}</select></div>
+        <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="jpRegu" required>${selectOptions(OPT_REGU, ipgReguAktif(ipgShiftNow(), ipgTanggalMulaiShift(ipgShiftNow())))}</select></div>
         <div class="col-6"><label class="form-label">Pos Jaga</label><select class="form-select" id="jpPos" required>${selectOptions(OPT_POS)}</select></div>
         <div class="col-6"><label class="form-label">Nama Petugas Lama</label><input type="text" class="form-control" id="jpPetugasLama" list="personelNamaOptions" required></div>
         <div class="col-6"><label class="form-label">Nama Petugas Baru</label><input type="text" class="form-control" id="jpPetugasBaru" list="personelNamaOptions" required></div>
@@ -1990,7 +2016,7 @@ function openLogPatroliForm() {
         <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="ptTanggal" required value="${ipgToday()}"></div>
         <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="ptShift" required>${selectOptions(OPT_SHIFT, ipgShiftNow())}</select></div>
         <div class="col-12"><div class="small" id="ptDinasInfo"></div></div>
-        <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="ptRegu" required>${selectOptions(OPT_REGU, ipgReguAktif(ipgShiftNow(), ipgToday()))}</select></div>
+        <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="ptRegu" required>${selectOptions(OPT_REGU, ipgReguAktif(ipgShiftNow(), ipgTanggalMulaiShift(ipgShiftNow())))}</select></div>
         <div class="col-6"><label class="form-label">Putaran</label><select class="form-select" id="ptPutaran" required>
           <option value="1">Putaran 1</option><option value="2">Putaran 2</option><option value="3">Putaran 3</option><option value="4">Putaran 4</option>
         </select></div>
