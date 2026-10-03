@@ -834,17 +834,22 @@ function loadDashboard() {
   google.script.run.withSuccessHandler(renderDashboard).withFailureHandler(e=>showToast('Error',e.message,'danger')).getDashboardData();
 }
 let dashboardJurnalPosHariIni = [];
+const SHIFT_AKTIF_ICON = { Pagi: 'bi-sun-fill', Sore: 'bi-cloud-sun-fill', Malam: 'bi-moon-stars-fill' };
+const SHIFT_AKTIF_COLOR = { Pagi: '#FFC107', Sore: '#FB8C00', Malam: '#3F51B5' };
+
 function renderDashboard(res) {
   if (!res.success) { showToast('Error', res.message, 'danger'); return; }
   const d = res.data;
   dashboardJurnalPosHariIni = d.jurnalPosHariIni || [];
+  const shiftAktifNow = ipgShiftNow();
+  const reguAktifNow = ipgReguAktif(shiftAktifNow, ipgTanggalMulaiShift(shiftAktifNow));
   document.getElementById('app-container').innerHTML = `
     <div class="section-title">
       <div><h3>Dashboard Operasional Pengamanan</h3><div class="section-sub">PT PLN Indonesia Power UBP Grati — Real-time Monitoring Sistem Manajemen Pengamanan</div></div>
     </div>
     <div class="row g-3 mb-3">
       ${statCard('bi-exclamation-triangle-fill', '#E53935', d.incidentBulanIni, 'Incident Bulan Ini')}
-      ${statCard('bi-person-vcard-fill', '#FFC107', d.ktaMendekatiKedaluwarsa, 'KTA Mendekati Kedaluwarsa')}
+      ${statCard(SHIFT_AKTIF_ICON[shiftAktifNow], SHIFT_AKTIF_COLOR[shiftAktifNow], `Regu ${reguAktifNow}`, `Shift ${shiftAktifNow} Aktif`)}
       ${statCard('bi-box-arrow-up-right', '#0C7A94', d.barangKeluarHariIni, 'Barang Keluar Hari Ini')}
       <div class="col-6 col-lg-3"><div class="stat-card" style="cursor:pointer;" onclick="openStatusKeamananDrilldown()">
         <div class="stat-icon" style="background:${STATUS_KEAMANAN_COLOR[d.statusKeamanan.level]}"><i class="bi ${STATUS_KEAMANAN_ICON[d.statusKeamanan.level]}"></i></div>
