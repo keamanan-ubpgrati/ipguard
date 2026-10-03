@@ -4115,16 +4115,28 @@ function submitAwarenessForm(evt, editId) {
 // ════════════════════════════════════════════════════════
 // MASTER DATA (Admin/TL/SPS Keamanan — PRD Bab 6)
 // ════════════════════════════════════════════════════════
+const MASTER_TABS = [
+  { key: 'MASTER_PERSONEL', label: 'Personel' },
+  { key: 'MASTER_POS', label: 'Pos Jaga' },
+  { key: 'MASTER_SARPRAS', label: 'Sarpras' },
+  { key: 'MASTER_TITIK_PATROLI', label: 'Titik Patroli' }
+];
+function renderMasterTabs() {
+  const wrap = document.getElementById('mdTabs');
+  if (!wrap) return;
+  wrap.innerHTML = MASTER_TABS.map(t => {
+    const active = currentMasterSheet === t.key;
+    return `<button type="button" onclick="loadMasterTab('${t.key}')"
+      style="border:1.5px solid var(--primary);border-radius:999px;padding:.35rem .9rem;font-size:.8rem;font-weight:600;margin:0 .4rem .4rem 0;
+      background:${active?'var(--primary)':'#fff'};color:${active?'#fff':'var(--primary)'};">${t.label}</button>`;
+  }).join('');
+}
 function loadMasterData() {
   const c = document.getElementById('app-container');
   c.innerHTML = sectionHeader('Master Data', 'Single Source of Truth — Personel, Pos Jaga, Sarpras, Titik Patroli')
-    + `<ul class="nav nav-pills mb-3" id="mdTabs">
-        <li class="nav-item"><a class="nav-link active" href="javascript:void(0)" onclick="loadMasterTab('MASTER_PERSONEL',this)">Personel</a></li>
-        <li class="nav-item"><a class="nav-link" href="javascript:void(0)" onclick="loadMasterTab('MASTER_POS',this)">Pos Jaga</a></li>
-        <li class="nav-item"><a class="nav-link" href="javascript:void(0)" onclick="loadMasterTab('MASTER_SARPRAS',this)">Sarpras</a></li>
-        <li class="nav-item"><a class="nav-link" href="javascript:void(0)" onclick="loadMasterTab('MASTER_TITIK_PATROLI',this)">Titik Patroli</a></li>
-      </ul>` + actionBar('Tambah Entitas', 'openMasterForm') + `<div id="mdExtraBar"></div><div id="tblMaster"></div>`;
-  loadMasterTab('MASTER_PERSONEL', document.querySelector('#mdTabs .nav-link'));
+    + `<div class="d-flex flex-wrap mb-2" id="mdTabs"></div>`
+    + actionBar('Tambah Entitas', 'openMasterForm') + `<div id="mdExtraBar"></div><div id="tblMaster"></div>`;
+  loadMasterTab('MASTER_PERSONEL');
 }
 // Skema per-kolom Master Data (hasil diskusi lanjutan) — mempermudah isian sesuai struktur sheet
 const MASTER_SCHEMAS = {
@@ -4160,10 +4172,9 @@ const MASTER_SCHEMAS = {
 
 let currentMasterSheet = 'MASTER_PERSONEL';
 let currentMasterRows = [];
-function loadMasterTab(sheetName, el) {
+function loadMasterTab(sheetName) {
   currentMasterSheet = sheetName;
-  document.querySelectorAll('#mdTabs .nav-link').forEach(l => l.classList.remove('active'));
-  if (el) el.classList.add('active');
+  renderMasterTabs();
   const extra = document.getElementById('mdExtraBar');
   if (extra) extra.innerHTML = sheetName === 'MASTER_TITIK_PATROLI'
     ? `<div class="card-ip mb-3 d-flex flex-wrap align-items-center gap-2" style="padding:.85rem 1rem;">
@@ -4292,7 +4303,7 @@ function cetakStikerQrTitik() {
       if (!res.success) { w.close(); showToast('Gagal', res.message, 'danger'); return; }
       openPrintDocument(buildStikerQrHtml(res.data.titik || [], res.data.prefix || 'IPGUARD:TP:'), w);
       if (res.data.dibuat) showToast('Berhasil', res.message, 'success');
-      loadMasterTab('MASTER_TITIK_PATROLI', document.querySelectorAll('#mdTabs .nav-link')[3]);
+      loadMasterTab('MASTER_TITIK_PATROLI');
     })
     .withFailureHandler(e => { hideSaving(); w.close(); showToast('Gagal', e.message, 'danger'); })
     .generateKodeQrTitikPatroli();
@@ -4301,7 +4312,7 @@ function cetakStikerQrTitik() {
 function gantiKodeQrTitik(id) {
   openConfirmModal('Ganti kode QR titik ini? Stiker lama di lokasi langsung tidak berlaku dan harus diganti dengan stiker baru.',
     () => callServer('regenerateKodeQrTitik', [id], null,
-      () => loadMasterTab('MASTER_TITIK_PATROLI', document.querySelectorAll('#mdTabs .nav-link')[3]), 'Mengganti kode QR...'));
+      () => loadMasterTab('MASTER_TITIK_PATROLI'), 'Mengganti kode QR...'));
 }
 
 // ════════════════════════════════════════════════════════
