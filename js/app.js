@@ -5060,7 +5060,8 @@ function ipgDfApply(key, rows) {
   const hasil = rows.filter(r => cfg.cocok(r, t));
   const lain = rows.filter(r => !cfg.cocok(r, t) && cfg.proses(r));
   if (info) info.innerHTML = `<span class="text-muted">${hasil.length} data pada ${ipgTglPendek(t)}.</span>`
-    + (lain.length ? ` <span class="ipg-df-warn"><i class="bi bi-hourglass-split"></i> ${lain.length} data dari tanggal lain masih diproses — <a href="#" onclick="ipgDfSet('${key}','');return false;">lihat semua</a></span>` : '');
+    + (lain.length ? ` <span class="ipg-df-warn"><i class="bi bi-hourglass-split"></i> ${lain.length} data dari tanggal lain masih diproses</span> `
+       + `<span class="pill pill-info" style="cursor:pointer;" onclick="ipgDfSet('${key}','')"><i class="bi bi-eye"></i> Lihat Semua</span>` : '');
   return { rows: hasil };
 }
 
