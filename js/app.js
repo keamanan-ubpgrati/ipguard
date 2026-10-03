@@ -2893,7 +2893,7 @@ function addBarangItemRow() {
   div.className = 'row g-2 mb-2 align-items-end bk-item-row';
   div.innerHTML = `
     <div class="col-4"><label class="form-label small">Nama Barang</label><input type="text" class="form-control form-control-sm bk-nama" required></div>
-    <div class="col-2"><label class="form-label small">Jumlah</label><input type="number" class="form-control form-control-sm bk-jumlah" min="0" value="1"></div>
+    <div class="col-2"><label class="form-label small">Jumlah</label><input type="text" inputmode="decimal" class="form-control form-control-sm bk-jumlah" placeholder="cth. 1 atau 2,5" value="1"></div>
     <div class="col-2"><label class="form-label small">Satuan</label>
       <input type="text" class="form-control form-control-sm bk-satuan" list="satuanOptions" placeholder="pcs">
       <datalist id="satuanOptions"><option value="Pcs"><option value="Set"><option value="Unit"><option value="Lot"></datalist>
