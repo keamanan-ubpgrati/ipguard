@@ -849,8 +849,8 @@ function renderDashboard(res) {
     </div>
     <div class="row g-3 mb-3">
       ${statCard('bi-exclamation-triangle-fill', '#E53935', d.incidentBulanIni, 'Incident Bulan Ini')}
-      ${statCard(SHIFT_AKTIF_ICON[shiftAktifNow], SHIFT_AKTIF_COLOR[shiftAktifNow], `Regu ${reguAktifNow}`, `Shift ${shiftAktifNow} Aktif`)}
       ${statCard('bi-box-arrow-up-right', '#0C7A94', d.barangKeluarHariIni, 'Barang Keluar Hari Ini')}
+      ${statCard(SHIFT_AKTIF_ICON[shiftAktifNow], SHIFT_AKTIF_COLOR[shiftAktifNow], `Regu ${reguAktifNow}`, `Shift ${shiftAktifNow} Aktif`)}
       <div class="col-6 col-lg-3"><div class="stat-card" style="cursor:pointer;" onclick="openStatusKeamananDrilldown()">
         <div class="stat-icon" style="background:${STATUS_KEAMANAN_COLOR[d.statusKeamanan.level]}"><i class="bi ${STATUS_KEAMANAN_ICON[d.statusKeamanan.level]}"></i></div>
         <div><div class="stat-value">${d.statusKeamanan.label}</div><div class="stat-label">Status Keamanan Hari Ini</div></div>
