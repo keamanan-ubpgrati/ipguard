@@ -1497,12 +1497,12 @@ function openJurnalForm() {
         <div class="col-6">
           <label class="form-label">Nama Petugas Lama</label>
           <div id="jpPetugasLamaWrap"><div class="d-flex gap-1 mb-1"><input type="text" class="form-control jp-petugas-lama" id="jpPetugasLama" list="personelNamaOptions" required></div></div>
-          <button type="button" class="btn btn-link btn-sm p-0" onclick="tambahPetugasKe2('jpPetugasLamaWrap','jp-petugas-lama')"><i class="bi bi-plus-circle"></i> Petugas ke-2 (jika piket 2 orang)</button>
+          <span class="pill pill-info" style="cursor:pointer;" title="Tambah nama kalau piket diisi 2 orang" onclick="tambahPetugasKe2('jpPetugasLamaWrap','jp-petugas-lama')"><i class="bi bi-plus-circle"></i> Petugas ke-2</span>
         </div>
         <div class="col-6">
           <label class="form-label">Nama Petugas Baru</label>
           <div id="jpPetugasBaruWrap"><div class="d-flex gap-1 mb-1"><input type="text" class="form-control jp-petugas-baru" id="jpPetugasBaru" list="personelNamaOptions" required></div></div>
-          <button type="button" class="btn btn-link btn-sm p-0" onclick="tambahPetugasKe2('jpPetugasBaruWrap','jp-petugas-baru')"><i class="bi bi-plus-circle"></i> Petugas ke-2 (jika piket 2 orang)</button>
+          <span class="pill pill-info" style="cursor:pointer;" title="Tambah nama kalau piket diisi 2 orang" onclick="tambahPetugasKe2('jpPetugasBaruWrap','jp-petugas-baru')"><i class="bi bi-plus-circle"></i> Petugas ke-2</span>
         </div>
         <div class="col-12"><label class="form-label">Kondisi</label>
           <select class="form-select" id="jpKondisi"><option>Aman</option><option>Waspada</option><option>Bahaya</option></select></div>
