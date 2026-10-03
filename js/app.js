@@ -4126,7 +4126,7 @@ const MASTER_SCHEMAS = {
   ],
   MASTER_POS: [
     { key: 'NamaPos', label: 'Nama Pos', type: 'select', options: OPT_POS },
-    { key: 'Zonasi', label: 'Zonasi', type: 'select', options: ['Ring 1','Ring 2','Ring 3'] },
+    { key: 'Zonasi', label: 'Zonasi', type: 'select', options: ['Zona A','Zona B','Zona C','Zona D'] },
     { key: 'JumlahPetugas', label: 'Jumlah Petugas', type: 'number' },
     { key: 'Status', label: 'Status', type: 'select', options: ['Aktif','Non-Aktif'] },
     { key: 'ShiftNonAktif', label: 'Shift yang Sengaja Dikosongkan (tidak wajib isi Jurnal Pos)', type: 'shiftMulti' }
