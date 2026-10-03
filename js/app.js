@@ -1494,8 +1494,16 @@ function openJurnalForm() {
         <div class="col-6"><label class="form-label">Jam Rolling</label><input type="text" class="form-control" value="Otomatis saat disimpan" disabled></div>
         <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="jpRegu" required>${selectOptions(OPT_REGU, ipgReguAktif(ipgShiftNow(), ipgTanggalMulaiShift(ipgShiftNow())))}</select></div>
         <div class="col-6"><label class="form-label">Pos Jaga</label><select class="form-select" id="jpPos" required>${selectOptions(OPT_POS)}</select></div>
-        <div class="col-6"><label class="form-label">Nama Petugas Lama</label><input type="text" class="form-control" id="jpPetugasLama" list="personelNamaOptions" required></div>
-        <div class="col-6"><label class="form-label">Nama Petugas Baru</label><input type="text" class="form-control" id="jpPetugasBaru" list="personelNamaOptions" required></div>
+        <div class="col-6">
+          <label class="form-label">Nama Petugas Lama</label>
+          <div id="jpPetugasLamaWrap"><div class="d-flex gap-1 mb-1"><input type="text" class="form-control jp-petugas-lama" id="jpPetugasLama" list="personelNamaOptions" required></div></div>
+          <button type="button" class="btn btn-link btn-sm p-0" onclick="tambahPetugasKe2('jpPetugasLamaWrap','jp-petugas-lama')"><i class="bi bi-plus-circle"></i> Petugas ke-2 (jika piket 2 orang)</button>
+        </div>
+        <div class="col-6">
+          <label class="form-label">Nama Petugas Baru</label>
+          <div id="jpPetugasBaruWrap"><div class="d-flex gap-1 mb-1"><input type="text" class="form-control jp-petugas-baru" id="jpPetugasBaru" list="personelNamaOptions" required></div></div>
+          <button type="button" class="btn btn-link btn-sm p-0" onclick="tambahPetugasKe2('jpPetugasBaruWrap','jp-petugas-baru')"><i class="bi bi-plus-circle"></i> Petugas ke-2 (jika piket 2 orang)</button>
+        </div>
         <div class="col-12"><label class="form-label">Kondisi</label>
           <select class="form-select" id="jpKondisi"><option>Aman</option><option>Waspada</option><option>Bahaya</option></select></div>
         <div class="col-12"><label class="form-label">Catatan (opsional)</label><textarea class="form-control" id="jpCatatan" rows="2" placeholder="Terutama isi kalau kondisi Waspada/Bahaya"></textarea></div>
@@ -1503,11 +1511,24 @@ function openJurnalForm() {
       <button type="submit" class="btn btn-primary-ip w-100 mt-3"><i class="bi bi-check2"></i> Simpan Jurnal</button>
     </form>`);
 }
+function tambahPetugasKe2(wrapId, cls) {
+  const wrap = document.getElementById(wrapId);
+  if (wrap.querySelectorAll('.' + cls).length >= 2) return;
+  const div = document.createElement('div');
+  div.className = 'd-flex gap-1 mb-1';
+  div.innerHTML = `<input type="text" class="form-control ${cls}" list="personelNamaOptions" placeholder="Nama petugas ke-2">
+    <button type="button" class="btn btn-outline-ip btn-sm-ip" onclick="this.closest('.d-flex').remove()"><i class="bi bi-trash"></i></button>`;
+  wrap.appendChild(div);
+}
+function namaPetugasGabung(wrapId, cls) {
+  return Array.from(document.querySelectorAll('#' + wrapId + ' .' + cls)).map(el => el.value.trim()).filter(Boolean).join(' & ');
+}
 function submitJurnalForm(evt) {
   evt.preventDefault();
   const payload = { tanggal: val('jpTanggal'), tanggalDinas: ipgGetDinas('jp'), rollingKe: val('jpRollingKe'),
     shift: val('jpShift'), regu: val('jpRegu'), posJaga: val('jpPos'),
-    petugasLama: val('jpPetugasLama'), petugasBaru: val('jpPetugasBaru'),
+    petugasLama: namaPetugasGabung('jpPetugasLamaWrap', 'jp-petugas-lama'),
+    petugasBaru: namaPetugasGabung('jpPetugasBaruWrap', 'jp-petugas-baru'),
     kondisi: val('jpKondisi'), catatan: val('jpCatatan'), createdBy: AppState.user.Nama };
   closeFormModal();
   callServer('submitJurnalPos', [payload], null, () => { loadJurnalList(); }, 'Menyimpan jurnal...');
