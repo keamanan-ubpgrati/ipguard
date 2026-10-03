@@ -4128,7 +4128,8 @@ const MASTER_SCHEMAS = {
     { key: 'NamaPos', label: 'Nama Pos', type: 'select', options: OPT_POS },
     { key: 'Zonasi', label: 'Zonasi', type: 'select', options: ['Ring 1','Ring 2','Ring 3'] },
     { key: 'JumlahPetugas', label: 'Jumlah Petugas', type: 'number' },
-    { key: 'Status', label: 'Status', type: 'select', options: ['Aktif','Non-Aktif'] }
+    { key: 'Status', label: 'Status', type: 'select', options: ['Aktif','Non-Aktif'] },
+    { key: 'ShiftNonAktif', label: 'Shift yang Sengaja Dikosongkan (tidak wajib isi Jurnal Pos)', type: 'shiftMulti' }
   ],
   MASTER_SARPRAS: [
     { key: 'NamaSarana', label: 'Nama Sarana', type: 'text', required: true, placeholder: 'misal: APAR, Metal Detector, Radio HT' },
@@ -4179,6 +4180,16 @@ function openMasterForm(editId) {
       return `<div class="col-6"><label class="form-label">${f.label}</label>
         <select class="form-select" id="${id}" ${f.required?'required':''}>${selectOptions(f.options, currentVal)}</select></div>`;
     }
+    if (f.type === 'shiftMulti') {
+      const terpilih = String(currentVal || '').split(',').map(s => s.trim()).filter(Boolean);
+      return `<div class="col-12"><label class="form-label">${f.label}</label>
+        <div class="d-flex gap-3">${OPT_SHIFT.map(sh => `
+          <div class="form-check">
+            <input type="checkbox" class="form-check-input md-shiftmulti-${f.key}" id="${id}_${sh}" value="${sh}" ${terpilih.includes(sh)?'checked':''}>
+            <label class="form-check-label" for="${id}_${sh}">${sh}</label>
+          </div>`).join('')}</div>
+        <div class="section-sub mt-1">Centang shift yang MEMANG tidak dijaga/tidak wajib isi Jurnal Pos untuk pos ini. Kosongkan semua kalau pos ini aktif di semua shift.</div></div>`;
+    }
     return `<div class="col-6"><label class="form-label">${f.label}</label>
       <input type="${f.type}" ${f.step?`step="${f.step}"`:''} ${f.readonly?'readonly':''} class="form-control" id="${id}" ${f.required?'required':''} placeholder="${f.placeholder||''}" value="${currentVal ?? ''}"></div>`;
   }).join('');
@@ -4193,7 +4204,14 @@ function submitMasterForm(evt, editId) {
   evt.preventDefault();
   const schema = MASTER_SCHEMAS[currentMasterSheet] || [];
   const payload = {};
-  schema.forEach(f => { payload[f.key] = val('md_' + f.key); });
+  schema.forEach(f => {
+    if (f.type === 'shiftMulti') {
+      payload[f.key] = Array.from(document.querySelectorAll('.md-shiftmulti-' + f.key))
+        .filter(el => el.checked).map(el => el.value).join(',');
+    } else {
+      payload[f.key] = val('md_' + f.key);
+    }
+  });
   closeFormModal();
   if (editId) {
     payload.ID = editId;
