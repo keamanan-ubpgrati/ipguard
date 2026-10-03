@@ -1846,13 +1846,20 @@ function loadPatroli() {
     renderRekapPatroliTable();
   }).getAllData('REKAP_PATROLI');
 }
+/** Hitung titik+putaran UNIK dari daftar log scan — scan dobel (petugas pilih "Tetap Simpan"
+ * saat ada peringatan duplikat) tidak dihitung dua kali, supaya hasilnya tidak lebih dari
+ * jumlah titik terdaftar x jumlah putaran (mis. 20 titik x 4 putaran = maksimal 80). */
+function countUnikTitikPatroli(entries) {
+  const set = new Set((entries || []).map(e => `${e.Putaran}|${e.TitikPatroli}`));
+  return set.size;
+}
 let rekapAllRows = [];
 function renderRekapPatroliTable() {
   const f = ipgDfApply('rekap', rekapAllRows);
   {
     renderGenericTable('tblRekapPatroli',
       [ {label:'Nomor Rekap', key:'NoRekap'}, {label:'Tanggal', render:r=>(r.Tanggal||'').slice(0,10)}, {label:'Shift', key:'Shift'}, {label:'Regu', key:'Regu'},
-        {label:'Jml Titik Discan', render:r=>{ try{return JSON.parse(r.TitikEntries||'[]').length;}catch(e){return 0;} }},
+        {label:'Jml Titik Discan', render:r=>{ try{return countUnikTitikPatroli(JSON.parse(r.TitikEntries||'[]'));}catch(e){return 0;} }},
         {label:'Status', render:r=>statusPill(r.StatusApproval)} ],
       f.rows.sort((a,b)=> new Date(b.WaktuInput)-new Date(a.WaktuInput)),
       row => withKoreksi('REKAP_PATROLI', row, rekapPatroliActions(row))
@@ -2313,7 +2320,12 @@ function cariLogPatroliTerkait() {
     const logs = (logRes.data||[]).filter(r => ipgDinasOf(r)===tanggal && r.Shift===shift && r.Regu===regu);
     const titikMaster = titikRes.data || [];
     lastPatroliLogsForRekap = logs;
-    wrap.innerHTML = `<div class="pill pill-info mb-1">${logs.length} titik discan dari ${titikMaster.length} titik terdaftar</div>` + buildPatroliMatrixHtml(shift, titikMaster, logs);
+    const unik = countUnikTitikPatroli(logs);
+    const totalPutaran = titikMaster.length * (PATROLI_PUTARAN_LABELS[shift] || []).length;
+    const dobel = logs.length - unik;
+    wrap.innerHTML = `<div class="pill pill-info mb-1">${unik} titik discan dari ${totalPutaran} target (${titikMaster.length} titik x ${(PATROLI_PUTARAN_LABELS[shift] || []).length} putaran)</div>`
+      + (dobel > 0 ? ` <span class="pill pill-warning mb-1"><i class="bi bi-exclamation-triangle"></i> ${dobel} scan dobel diabaikan dari hitungan</span>` : '')
+      + buildPatroliMatrixHtml(shift, titikMaster, logs);
   });
 }
 function submitRekapPatroliForm(evt) {
