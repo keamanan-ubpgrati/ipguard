@@ -390,6 +390,7 @@ function enterApp() {
     }
   }).getAppBootstrapData();
   loadPersonelNamaDatalist();
+  loadPosOptions();
   loadNotifikasiApproval();
   loadDefaultPrintLogo(); // prioritas rendah, di belakang layar — baru dipakai kalau ada yang mencetak dokumen
 
@@ -1316,7 +1317,26 @@ const OPT_SHIFT = ['Pagi', 'Sore', 'Malam'];
 const KONDISI_JURNAL_PILL = { 'Aman': 'pill-success', 'Waspada': 'pill-warning', 'Bahaya': 'pill-danger' };
 function kondisiJurnalPill(kondisi) { return `<span class="pill ${KONDISI_JURNAL_PILL[kondisi] || 'pill-neutral'}">${kondisi || '-'}</span>`; }
 const OPT_REGU = ['A', 'B', 'C', 'D'];
-const OPT_POS = ['Pos I','Pos II','Pos III','Pos IV','Pos V','Pos VI','Pos VII','Pos VIII','Pos IX','Pos Utama','Pos SCC','Pos Kanal Timur'];
+// Daftar pos = Master Data → Pos Jaga (hanya yang Aktif). Array diubah di tempat agar semua dropdown
+// yang memegang referensi OPT_POS ikut terbarui. Daftar bawaan dipakai sampai Master Data termuat / kalau kosong.
+const OPT_POS_BAWAAN = ['Pos I','Pos II','Pos III','Pos IV','Pos V','Pos VI','Pos VII','Pos VIII','Pos IX','Pos Utama','Pos SCC','Pos Kanal Timur'];
+const OPT_POS = OPT_POS_BAWAAN.slice();
+function syncOptPos(rows) {
+  const aktif = [];
+  let adaNama = false;
+  (rows || []).forEach(r => {
+    const n = String(r.NamaPos || '').trim();
+    if (!n) return;
+    adaNama = true;
+    if (r.Status !== 'Non-Aktif' && aktif.indexOf(n) === -1) aktif.push(n);
+  });
+  if (!adaNama || !aktif.length) return; // Master Data kosong → tetap pakai bawaan
+  OPT_POS.length = 0;
+  aktif.forEach(n => OPT_POS.push(n));
+}
+function loadPosOptions() {
+  google.script.run.withSuccessHandler(res => { if (res && res.success) syncOptPos(res.data); }).getAllData('MASTER_POS');
+}
 // Checkpoint jurnal tetap per shift (hasil diskusi lanjutan) — jam resmi shift Satpam PLN IP UBP Grati:
 // Pagi 06.00-14.00 | Sore 14.00-21.00 | Malam 21.00-06.00
 // Label rentang jam checkpoint Pos Jaga — dipakai server (SHIFT_CHECKPOINTS_MAP) utk grid kepatuhan Dashboard
@@ -4149,7 +4169,7 @@ const MASTER_SCHEMAS = {
     { key: 'Status', label: 'Status', type: 'select', options: ['Aktif','Non-Aktif'] }
   ],
   MASTER_POS: [
-    { key: 'NamaPos', label: 'Nama Pos', type: 'select', options: OPT_POS },
+    { key: 'NamaPos', label: 'Nama Pos', type: 'text', required: true, placeholder: 'misal: Pos X, Pos Gerbang Barat' },
     { key: 'Zonasi', label: 'Zonasi', type: 'select', options: ['Zona A','Zona B','Zona C','Zona D'] },
     { key: 'JumlahPetugas', label: 'Jumlah Petugas', type: 'number' },
     { key: 'Status', label: 'Status', type: 'select', options: ['Aktif','Non-Aktif'] },
@@ -4181,10 +4201,16 @@ function loadMasterTab(sheetName) {
          <div class="flex-grow-1 small"><b>Stiker QR titik patroli.</b> Kode QR dibuat otomatis untuk titik yang belum punya kode.
            Titik yang sudah punya kode tidak berubah, jadi stiker terpasang tetap berlaku.</div>
          <button class="btn btn-primary-ip btn-sm-ip" onclick="cetakStikerQrTitik()"><i class="bi bi-qr-code"></i> Cetak Stiker QR</button>
+       </div>` : sheetName === 'MASTER_POS'
+    ? `<div class="card-ip mb-3 d-flex flex-wrap align-items-center gap-2" style="padding:.85rem 1rem;">
+         <div class="flex-grow-1 small"><b>Daftar pos mengikuti tabel ini.</b> Pos berstatus <b>Non-Aktif</b> tidak muncul di semua dropdown
+           (Jurnal Pos, Patroli, Sarpras, dst.) dan tidak dihitung kepatuhannya. Tambah pos baru lewat tombol Tambah.</div>
+         <button class="btn btn-outline-ip btn-sm-ip" onclick="callServer('lengkapiPosBawaan',[],null,()=>loadMasterTab('MASTER_POS'),'Melengkapi...')"><i class="bi bi-plus-circle"></i> Lengkapi dari daftar bawaan</button>
        </div>` : '';
   google.script.run.withSuccessHandler(res => {
     const rows = res.data || [];
     currentMasterRows = rows;
+    if (sheetName === 'MASTER_POS') syncOptPos(rows);
     const cols = rows.length ? Object.keys(rows[0]).filter(k=>k!=='ID').map(k=>({label:k, key:k})) : [];
     renderGenericTable('tblMaster', cols, rows, row =>
       `<button class="btn btn-outline-ip btn-sm-ip" onclick="openMasterForm('${row.ID}')"><i class="bi bi-pencil"></i></button>
@@ -4235,6 +4261,12 @@ function submitMasterForm(evt, editId) {
       payload[f.key] = val('md_' + f.key);
     }
   });
+  if (currentMasterSheet === 'MASTER_POS') {
+    const nama = String(payload.NamaPos || '').trim().toLowerCase();
+    const kembar = currentMasterRows.some(r => r.ID !== editId && String(r.NamaPos || '').trim().toLowerCase() === nama);
+    if (!nama || kembar) { showToast('Gagal', nama ? 'Nama pos sudah ada di Master Data.' : 'Nama pos wajib diisi.', 'danger'); return false; }
+    payload.NamaPos = String(payload.NamaPos).trim();
+  }
   closeFormModal();
   if (editId) {
     payload.ID = editId;
