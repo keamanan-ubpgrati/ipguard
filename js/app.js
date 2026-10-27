@@ -1111,7 +1111,7 @@ function sectionHeader(title, sub, badge) {
 function loadMutasiJaga() {
   ipgDfReset('ba');
   const c = document.getElementById('app-container');
-  c.innerHTML = sectionHeader('Mutasi Jaga Pos — Serah Terima 5 Section', 'Jurnal ringkas tiap 2 jam (referensi) + Berita Acara di akhir shift (Danru → TL Keamanan)')
+  c.innerHTML = sectionHeader('Mutasi Jaga Pos — Serah Terima 5 Section', 'Jurnal ringkas tiap 2 jam (referensi) + Berita Acara di akhir shift (Danru Lama → Danru Baru → TL Keamanan)')
     + `<div class="mb-3 d-flex justify-content-end gap-2 flex-wrap">
          <button class="btn btn-outline-ip" onclick="openJurnalForm()"><i class="bi bi-journal-plus"></i> Catat Jurnal</button>
          <button class="btn btn-outline-ip" onclick="openUnduhLaporanModal('jurnal_pos')"><i class="bi bi-file-earmark-arrow-down"></i> Unduh Laporan</button>
@@ -1687,7 +1687,7 @@ function val(id) { return document.getElementById(id).value; }
 function loadChecklistSarpras() {
   ipgDfReset('cs');
   const c = document.getElementById('app-container');
-  c.innerHTML = sectionHeader('Checklist Sarana & Prasarana', 'Item diambil otomatis dari Master Data — tinggal update kondisi & jumlah. Approval Danru → TL Keamanan.')
+  c.innerHTML = sectionHeader('Checklist Sarana & Prasarana', 'Item diambil otomatis dari Master Data — tinggal update kondisi & jumlah. Approval Danru Lama → Danru Baru → TL Keamanan.')
     + `<div class="mb-3 d-flex justify-content-end gap-2 flex-wrap">
          <button class="btn btn-outline-ip" onclick="openUnduhLaporanModal('checklist_sarpras')"><i class="bi bi-file-earmark-arrow-down"></i> Unduh Laporan</button>
          <button class="btn btn-primary-ip" onclick="openChecklistForm()"><i class="bi bi-plus-lg"></i> Buat Checklist Baru</button>
@@ -1738,12 +1738,19 @@ function loadKondisiSarprasTerkini() {
     );
   }).getSarprasKondisiTerkini();
 }
+function approvalTigaTahapBtns(fn, row, reload, labelDokumen) {
+  const role = AppState.user.Role, nama = AppState.user.Nama;
+  const tombol = (stage, teks, pesan) => `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('${fn}',['${row.ID}','${stage}','${nama}'],'${pesan}',${reload})">${teks}</button> `;
+  const st = row.StatusApproval;
+  let btns = '';
+  if ((st === 'Menunggu Danru Lama' || st === 'Menunggu Danru') && ['DANRU','ADMIN'].includes(role)) btns += tombol('DANRU_LAMA', 'Verifikasi Danru Lama', labelDokumen + ' diverifikasi Danru Lama');
+  if (st === 'Menunggu Danru Baru' && ['DANRU','ADMIN'].includes(role)) btns += tombol('DANRU_BARU', 'Verifikasi Danru Baru', labelDokumen + ' diverifikasi Danru Baru');
+  if (st === 'Menunggu TL Keamanan' && ['TL_KEAMANAN','ADMIN'].includes(role)) btns += tombol('TL', 'Approve Final', labelDokumen + ' disetujui TL Keamanan');
+  return btns;
+}
 function checklistSarprasActions(row) {
-  let btns = `<button class="btn btn-outline-ip btn-sm-ip" onclick="cetakChecklistSarpras('${row.ID}')"><i class="bi bi-printer"></i></button> `;
-  if (row.StatusApproval === 'Menunggu Danru' && ['DANRU','ADMIN'].includes(AppState.user.Role))
-    btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('approveChecklistSarprasStage',['${row.ID}','DANRU','${AppState.user.Nama}'],'Diverifikasi Danru',loadChecklistSarpras)">Verifikasi Danru</button>`;
-  if (row.StatusApproval === 'Menunggu TL Keamanan' && ['TL_KEAMANAN','ADMIN'].includes(AppState.user.Role))
-    btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('approveChecklistSarprasStage',['${row.ID}','TL','${AppState.user.Nama}'],'Disetujui TL Keamanan',loadChecklistSarpras)">Approve Final</button>`;
+  const btns = `<button class="btn btn-outline-ip btn-sm-ip" onclick="cetakChecklistSarpras('${row.ID}')"><i class="bi bi-printer"></i></button> `
+    + approvalTigaTahapBtns('approveChecklistSarprasStage', row, 'loadChecklistSarpras', 'Checklist');
   return btns || '-';
 }
 
@@ -1847,7 +1854,8 @@ function cetakChecklistSarpras(id) {
         </tr></thead>
         <tbody>${rowsHtml}</tbody>
       </table>` + buildApprovalTable([
-        { label: 'Danru', name: r.DanruBy },
+        { label: 'Danru Lama (Regu Menyerahkan)', name: r.DanruLamaBy || r.DanruBy },
+        { label: 'Danru Baru (Regu Menerima)', name: r.DanruBaruBy },
         { label: 'TL Keamanan', name: r.TLBy }
       ], `Checklist Sarpras ${ipgTanggalDinasPanjang(r)} Shift ${r.Shift} Regu ${r.Regu}`);
     openPrintDocument(body);
@@ -1860,7 +1868,7 @@ function cetakChecklistSarpras(id) {
 function loadPatroli() {
   ipgDfReset('rekap');
   const c = document.getElementById('app-container');
-  c.innerHTML = sectionHeader('Patroli QR & GPS', 'Log titik tiap checkpoint (referensi) + Rekap per shift (Danru → TL Keamanan)')
+  c.innerHTML = sectionHeader('Patroli QR & GPS', 'Log titik tiap checkpoint (referensi) + Rekap per shift (Danru Lama → Danru Baru → TL Keamanan)')
     + `<div class="mb-3 d-flex justify-content-end gap-2 flex-wrap">
          <button class="btn btn-outline-ip" onclick="openLogPatroliForm()"><i class="bi bi-geo-alt"></i> Scan Titik Patroli</button>
          <button class="btn btn-outline-ip" onclick="openUnduhLaporanModal('patroli')"><i class="bi bi-file-earmark-arrow-down"></i> Unduh Laporan</button>
@@ -1875,7 +1883,7 @@ function loadPatroli() {
          <div id="tblLogPatroli"></div>
        </div>
        <div class="card-ip">
-         <h6 class="mb-2"><i class="bi bi-file-earmark-text"></i> Rekap Patroli per Shift <span class="badge-prd">Danru → TL Keamanan</span></h6>
+         <h6 class="mb-2"><i class="bi bi-file-earmark-text"></i> Rekap Patroli per Shift <span class="badge-prd">Danru Lama → Danru Baru → TL Keamanan</span></h6>
          <div class="small text-muted mb-2"><i class="bi bi-info-circle"></i> Buat Rekap Patroli setelah Putaran ke-4 (4x putaran) pada shift ini selesai dilaksanakan.</div>
          ${ipgDfBar('rekap')}
          <div id="tblRekapPatroli"></div>
@@ -2048,11 +2056,8 @@ function onLogPatroliTanggalChange() {
   renderLogPatroliTable();
 }
 function rekapPatroliActions(row) {
-  let btns = `<button class="btn btn-outline-ip btn-sm-ip" onclick="cetakRekapPatroli('${row.ID}')"><i class="bi bi-printer"></i></button> `;
-  if (row.StatusApproval === 'Menunggu Danru' && ['DANRU','ADMIN'].includes(AppState.user.Role))
-    btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('approveRekapPatroli',['${row.ID}','DANRU','${AppState.user.Nama}'],'Rekap diverifikasi Danru',loadPatroli)">Verifikasi Danru</button>`;
-  if (row.StatusApproval === 'Menunggu TL Keamanan' && ['TL_KEAMANAN','ADMIN'].includes(AppState.user.Role))
-    btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('approveRekapPatroli',['${row.ID}','TL_KEAMANAN','${AppState.user.Nama}'],'Rekap disetujui TL Keamanan',loadPatroli)">Approve Final</button>`;
+  const btns = `<button class="btn btn-outline-ip btn-sm-ip" onclick="cetakRekapPatroli('${row.ID}')"><i class="bi bi-printer"></i></button> `
+    + approvalTigaTahapBtns('approveRekapPatroli', row, 'loadPatroli', 'Rekap');
   return btns || '-';
 }
 
@@ -2420,7 +2425,8 @@ function cetakRekapPatroli(id) {
         `No. Rekap: ${r.NoRekap} &nbsp;|&nbsp; Shift ${r.Shift} &nbsp;|&nbsp; Regu ${r.Regu} &nbsp;|&nbsp; ${ipgTanggalDinasPanjang(r)}`) + `
       <div>${buildPatroliMatrixPrintHtml(r.Shift, titikMaster, logs)}</div>
       <p style="font-size:12px; margin-top:10px;"><b>Catatan Temuan:</b> ${r.CatatanTemuan || 'Nihil'}</p>` + buildApprovalTable([
-        { label: 'Danru', name: r.DanruBy },
+        { label: 'Danru Lama (Regu Menyerahkan)', name: r.DanruLamaBy || r.DanruBy },
+        { label: 'Danru Baru (Regu Menerima)', name: r.DanruBaruBy },
         { label: 'TL Keamanan', name: r.TLBy }
       ], `Rekap Patroli No. ${r.NoRekap}`);
     openPrintDocument(body);
@@ -4778,7 +4784,7 @@ const KOREKSI_FORM = {
     { k: 'Tanggal', t: 'date' }, { k: 'TanggalDinas', t: 'date', label: 'Tanggal Dinas' }, { k: 'Putaran', t: 'select', opts: ['1', '2', '3', '4', '5', '6'] },
     { k: 'Shift', t: 'select', opts: () => OPT_SHIFT }, { k: 'Regu', t: 'select', opts: () => OPT_REGU },
     { k: 'TitikPatroli', t: 'select', opts: () => koreksiTitikPatroli, label: 'Titik Patroli' }] },
-  REKAP_PATROLI: { judul: 'Rekap Patroli', reload: () => loadPatroli(), status: r => r.StatusApproval, awal: 'Menunggu Danru', fields: [
+  REKAP_PATROLI: { judul: 'Rekap Patroli', reload: () => loadPatroli(), status: r => r.StatusApproval, awal: 'Menunggu Danru Lama', fields: [
     { k: 'Tanggal', t: 'date' }, { k: 'TanggalDinas', t: 'date', label: 'Tanggal Dinas' }, { k: 'Shift', t: 'select', opts: () => OPT_SHIFT },
     { k: 'Regu', t: 'select', opts: () => OPT_REGU }, { k: 'CatatanTemuan', t: 'textarea', label: 'Catatan Temuan' }] },
   BARANG_KELUAR: { judul: 'Barang Keluar', reload: () => loadBarangKeluar(), status: r => r.Status, awal: 'Diajukan', fields: [
