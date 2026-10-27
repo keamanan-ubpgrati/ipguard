@@ -1228,13 +1228,21 @@ function ipgReguAktif(shift, tanggalStr) {
   } catch (e) {}
   return OPT_REGU[0];
 }
-/** Putaran patroli terdekat sesuai jadwal (Pagi 06/08/10/12, Sore 14/16/18/20, Malam 22/00/02/04) */
+/** Putaran/Rolling yang sedang berjalan menurut jam sekarang, mengikuti PATROLI_PUTARAN_LABELS
+ * (Pagi 06/08/10/12 · Sore 14/16/18/19.30 · Malam 21/23/01.30/04). */
 function ipgPutaranNow() {
-  const h = new Date().getHours();
-  if (h >= 6 && h < 14) return Math.min(4, Math.floor((h - 6) / 2) + 1);
-  if (h >= 14 && h < 21) return Math.min(4, Math.floor((h - 14) / 2) + 1);
-  if (h >= 21) return 1;
-  return Math.min(4, Math.floor(h / 2) + 2);
+  const d = new Date(), m = d.getHours() * 60 + d.getMinutes();
+  const shift = ipgShiftNow();
+  const labels = PATROLI_PUTARAN_LABELS[shift] || PATROLI_PUTARAN_LABELS['Pagi'];
+  const mulaiShift = parseInt(labels[0], 10) * 60;
+  const rel = x => (x < mulaiShift ? x + 1440 : x);
+  const skrg = rel(m);
+  let hasil = 1;
+  labels.forEach((l, i) => {
+    const [h, mm] = l.split('-')[0].split('.').map(Number);
+    if (skrg >= rel(h * 60 + mm)) hasil = i + 1;
+  });
+  return hasil;
 }
 /**
  * Hitung tanggal dinas dari tanggal KALENDER + shift (+ putaran/rolling). Sama persis dengan hitungDinas_ di Kode.gs.
@@ -1242,7 +1250,7 @@ function ipgPutaranNow() {
  *  - Malam, diisi saat malam berjalan (tanggal = hari ini, pukul 21.00–11.59):
  *      21.00–23.59 → besok (malam yang baru dimulai) · 00.00–11.59 → tanggal itu (malam yang sedang/baru berakhir).
  *  - Malam, susulan (tanggal lain, atau hari ini pukul 12.00–20.59):
- *      Putaran/Rolling 1 (22.00) → besok · Putaran/Rolling 2–4 (setelah 00.00) → tanggal itu ·
+ *      Putaran/Rolling 1 (mulai 21.00) → besok · Putaran/Rolling 2–4 → tanggal itu ·
  *      BA/Rekap/Checklist → tanggal itu (dibuat pagi saat serah terima).
  * Kalau keterangan dinas tidak sesuai, petugas cukup membetulkan kolom Tanggal ke tanggal kejadian sebenarnya.
  */
@@ -1309,6 +1317,10 @@ function ipgGetDinas(pre) {
 // Fase capture: dinas sudah benar sebelum pencarian Section A / Rekap (listener bawaan form) berjalan.
 document.addEventListener('change', e => {
   const m = /^(jp|mj|cs|pt|rp)(Tanggal|Shift|RollingKe|Putaran)$/.exec(e.target && e.target.id || '');
+  if (m && m[2] === 'Shift') {
+    if (m[1] === 'jp') ipgIsiOpsiRentang('jpRollingKe', e.target.value);
+    if (m[1] === 'pt') ipgIsiOpsiRentang('ptPutaran', e.target.value, 'Putaran');
+  }
   if (m) ipgUpdateDinas(m[1]);
 }, true);
 
@@ -1342,10 +1354,19 @@ function loadPosOptions() {
 // Label rentang jam checkpoint Pos Jaga — dipakai server (SHIFT_CHECKPOINTS_MAP) utk grid kepatuhan Dashboard
 // Label rentang jam Putaran Patroli (khusus tampilan — Putaran dipilih manual 1-4 oleh Satpam)
 const PATROLI_PUTARAN_LABELS = {
-  'Pagi': ['06.00-07.00', '08.00-09.00', '10.00-11.00', '12.00-13.00'],
-  'Sore': ['14.00-15.00', '16.00-17.00', '18.00-19.00', '20.00-21.00'],
-  'Malam': ['22.00-23.00', '00.00-01.00', '02.00-03.00', '04.00-05.00']
+  'Pagi': ['06.00-08.00', '08.00-10.00', '10.00-12.00', '12.00-14.00'],
+  'Sore': ['14.00-16.00', '16.00-18.00', '18.00-19.30', '19.30-21.00'],
+  'Malam': ['21.00-23.00', '23.00-01.30', '01.30-04.00', '04.00-06.00']
 };
+// Isi ulang opsi Rolling/Putaran dengan rentang jam sesuai shift terpilih (nilai tetap 1-4)
+function ipgIsiOpsiRentang(selectId, shift, awalan) {
+  const sel = document.getElementById(selectId);
+  const labels = PATROLI_PUTARAN_LABELS[shift];
+  if (!sel || !labels) return;
+  const dipilih = sel.value || '1';
+  sel.innerHTML = labels.map((l, i) => `<option value="${i + 1}">${awalan ? awalan + ' ' : ''}${i + 1} (${l})</option>`).join('');
+  sel.value = dipilih;
+}
 function selectOptions(list, selected) {
   return list.map(o => `<option ${o===selected?'selected':''}>${o}</option>`).join('');
 }
@@ -1510,7 +1531,7 @@ function openJurnalForm() {
         <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="jpTanggal" required value="${ipgToday()}"></div>
         <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="jpShift" required>${selectOptions(OPT_SHIFT, ipgShiftNow())}</select></div>
         <div class="col-12"><div class="small" id="jpDinasInfo"></div></div>
-        <div class="col-6"><label class="form-label">Rolling ke</label><select class="form-select" id="jpRollingKe" required><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
+        <div class="col-6"><label class="form-label">Rolling ke</label><select class="form-select" id="jpRollingKe" required>${PATROLI_PUTARAN_LABELS[ipgShiftNow()].map((l, i) => `<option value="${i + 1}">${i + 1} (${l})</option>`).join('')}</select></div>
         <div class="col-6"><label class="form-label">Jam Rolling</label><input type="text" class="form-control" value="Otomatis saat disimpan" disabled></div>
         <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="jpRegu" required>${selectOptions(OPT_REGU, ipgReguAktif(ipgShiftNow(), ipgTanggalMulaiShift(ipgShiftNow())))}</select></div>
         <div class="col-6"><label class="form-label">Pos Jaga</label><select class="form-select" id="jpPos" required>${selectOptions(OPT_POS)}</select></div>
@@ -2054,9 +2075,7 @@ function openLogPatroliForm() {
         <div class="col-6"><label class="form-label">Shift</label><select class="form-select" id="ptShift" required>${selectOptions(OPT_SHIFT, ipgShiftNow())}</select></div>
         <div class="col-12"><div class="small" id="ptDinasInfo"></div></div>
         <div class="col-6"><label class="form-label">Regu</label><select class="form-select" id="ptRegu" required>${selectOptions(OPT_REGU, ipgReguAktif(ipgShiftNow(), ipgTanggalMulaiShift(ipgShiftNow())))}</select></div>
-        <div class="col-6"><label class="form-label">Putaran</label><select class="form-select" id="ptPutaran" required>
-          <option value="1">Putaran 1</option><option value="2">Putaran 2</option><option value="3">Putaran 3</option><option value="4">Putaran 4</option>
-        </select></div>
+        <div class="col-6"><label class="form-label">Putaran</label><select class="form-select" id="ptPutaran" required>${PATROLI_PUTARAN_LABELS[ipgShiftNow()].map((l, i) => `<option value="${i + 1}">Putaran ${i + 1} (${l})</option>`).join('')}</select></div>
         <div class="col-12"><label class="form-label">Metode verifikasi</label>
           <div class="segmented-toggle d-flex w-100" role="group">
             <button type="button" class="seg-btn flex-fill" id="ptModeQR" onclick="setPatroliMode('QR')"><i class="bi bi-qr-code-scan"></i> Scan QR</button>
