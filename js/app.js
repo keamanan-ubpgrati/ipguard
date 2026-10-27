@@ -800,7 +800,14 @@ function callServer(fnName, args, successMsg, afterFn, savingMsg) {
   google.script.run
     .withSuccessHandler(res => {
       hideSaving();
-      if (res.success) { showToast('Berhasil', successMsg || res.message, 'success'); if (afterFn) afterFn(res); }
+      if (res.success) {
+        const info = successMsg && res.message && /diperbarui dari data terbaru/.test(res.message) ? ' ' + res.message.replace(/^Tersimpan\.\s*/, '') : '';
+        showToast('Berhasil', (successMsg || res.message) + info, 'success'); if (afterFn) afterFn(res);
+      }
+      else if (res.data && res.data.perluKonfirmasi) {
+        // Server minta konfirmasi (mis. isi dokumen kosong saat verifikasi Danru) → kirim ulang dengan argumen tambahan true
+        openConfirmModal('⚠ ' + res.message, () => callServer(fnName, args.concat([true]), successMsg, afterFn, savingMsg));
+      }
       else if (res.data && res.data.duplikat && args[0] && typeof args[0] === 'object') {
         // Server menemukan data serupa → tanya dulu, kirim ulang dengan abaikanDuplikat bila tetap ingin disimpan
         openConfirmModal('⚠ Kemungkinan data ganda\n\n' + res.message + '\n\nTetap simpan data ini?', () =>
@@ -1623,6 +1630,7 @@ function openMutasiJagaForm() {
           <span class="section-chip">A</span><b>Informasi Shift & Regu Petugas</b>
           <span class="pill pill-info">Otomatis dari Jurnal Pos yang sudah dicatat</span>
           <div id="jurnalTerkaitWrap" class="mt-2"></div>
+          <div id="mjPeringatanKurang"></div>
         </div>
         <div class="col-12"><hr><span class="section-chip">B</span><b>Kondisi Pos</b>
           <div id="sectionBWrap" class="mt-2">${renderSectionBTable()}</div>
@@ -1648,6 +1656,8 @@ function cariJurnalTerkait() {
   const tanggal = ipgGetDinas('mj'), shift = val('mjShift'), pos = val('mjPos'), regu = val('mjRegu');
   const wrap = document.getElementById('jurnalTerkaitWrap');
   wrap.innerHTML = '<div class="small text-muted">Mencari...</div>';
+  lastJurnalRowsForBA = null; // null = masih memuat → tombol kirim menunggu
+  ipgResetPeringatanKurang('mj');
   google.script.run.withSuccessHandler(res => {
     const rows = (res.data||[]).filter(r => ipgDinasOf(r)===tanggal && r.Shift===shift && r.PosJaga===pos && r.Regu===regu)
       .sort((a,b)=> Number(a.RollingKe||0) - Number(b.RollingKe||0));
@@ -1658,8 +1668,36 @@ function cariJurnalTerkait() {
       <tbody>${rows.map(r=>`<tr><td>Rolling ${r.RollingKe}</td><td>${ipgTglPendek(r.Tanggal)} ${r.JamRolling}</td><td>${r.PetugasLama} → ${r.PetugasBaru}</td><td>${kondisiJurnalPill(r.Kondisi)}</td><td>${r.Catatan||'-'}</td></tr>`).join('')}</tbody></table></div>`;
   }).getAllData('JURNAL_POS');
 }
+// ── Cegah BA / Rekap terkirim dengan data kosong atau belum lengkap (cek di HP, tanpa beban server) ──
+// Kosong → ditolak. Belum lengkap → peringatan di form; klik kirim sekali lagi untuk tetap mengirim.
+const ipgPeringatanKurang = {};
+function ipgResetPeringatanKurang(pre) {
+  ipgPeringatanKurang[pre] = false;
+  const el = document.getElementById(pre + 'PeringatanKurang');
+  if (el) el.innerHTML = '';
+}
+function ipgCekKelengkapan(pre, jumlah, target, namaData, sisaInfo) {
+  const el = document.getElementById(pre + 'PeringatanKurang');
+  if (jumlah === null) { showToast('Tunggu', 'Data ' + namaData + ' masih dimuat, coba lagi sebentar.', 'warning'); return false; }
+  if (jumlah === 0) {
+    if (el) el.innerHTML = `<div class="alert alert-danger small mb-0 mt-2"><i class="bi bi-x-octagon"></i> <b>Belum ada ${namaData}</b> untuk kombinasi ini. Catat ${namaData} dulu, atau periksa Tanggal/Shift/Regu${pre === 'mj' ? '/Pos' : ''}.</div>`;
+    showToast('Belum bisa dikirim', 'Belum ada ' + namaData + ' yang tercatat.', 'danger');
+    return false;
+  }
+  if (jumlah < target && !ipgPeringatanKurang[pre]) {
+    ipgPeringatanKurang[pre] = true;
+    if (el) el.innerHTML = `<div class="alert alert-warning small mb-0 mt-2"><i class="bi bi-exclamation-triangle"></i> <b>${namaData} belum lengkap: ${jumlah} dari ${target}.</b>${sisaInfo ? ' ' + sisaInfo : ''}
+      Lengkapi dulu, atau klik tombol kirim <b>sekali lagi</b> untuk tetap mengirim.</div>`;
+    return false;
+  }
+  return true;
+}
 function submitMutasiJagaForm(evt) {
   evt.preventDefault();
+  const rollingAda = lastJurnalRowsForBA ? Array.from(new Set(lastJurnalRowsForBA.map(r => String(r.RollingKe)))) : null;
+  const belum = rollingAda ? ['1','2','3','4'].filter(n => !rollingAda.includes(n)) : [];
+  if (!ipgCekKelengkapan('mj', rollingAda ? rollingAda.length : null, 4, 'jurnal pos',
+      belum.length ? 'Rolling yang belum tercatat: ' + belum.join(', ') + '.' : '')) return false;
   const sectionBItems = [];
   document.querySelectorAll('#sectionBWrap tbody tr').forEach(tr => {
     const kondisiEl = tr.querySelector('.sb-kondisi');
@@ -2328,6 +2366,7 @@ function openRekapPatroliForm() {
         <div class="col-12">
           <span class="pill pill-info">Matrix 4 Putaran × Titik Patroli — otomatis dikompilasi dari Log Titik</span>
           <div id="patroliLogTerkaitWrap" class="mt-2"></div>
+          <div id="rpPeringatanKurang"></div>
         </div>
         <div class="col-12"><label class="form-label">Catatan Temuan (opsional)</label>
           <textarea class="form-control" id="rpCatatanTemuan" rows="2" placeholder="Kosongkan jika nihil. Temuan patroli tidak otomatis jadi Incident — laporkan manual di modul Incident bila perlu."></textarea></div>
@@ -2338,6 +2377,7 @@ function openRekapPatroliForm() {
   cariLogPatroliTerkait();
 }
 let lastPatroliLogsForRekap = [];
+let lastPatroliTargetForRekap = 0;
 
 /** Bangun matrix HTML: baris = Titik Patroli terdaftar, kolom = Putaran 1-4 */
 function buildPatroliMatrixHtml(shift, titikMaster, logs) {
@@ -2360,6 +2400,8 @@ function cariLogPatroliTerkait() {
   const tanggal = ipgGetDinas('rp'), shift = val('rpShift'), regu = val('rpRegu');
   const wrap = document.getElementById('patroliLogTerkaitWrap');
   wrap.innerHTML = '<div class="small text-muted">Mencari...</div>';
+  lastPatroliLogsForRekap = null; lastPatroliTargetForRekap = 0;
+  ipgResetPeringatanKurang('rp');
   Promise.all([
     new Promise(resolve => google.script.run.withSuccessHandler(resolve).getAllData('LOG_PATROLI')),
     new Promise(resolve => google.script.run.withSuccessHandler(resolve).getAllData('MASTER_TITIK_PATROLI'))
@@ -2369,6 +2411,7 @@ function cariLogPatroliTerkait() {
     lastPatroliLogsForRekap = logs;
     const unik = countUnikTitikPatroli(logs);
     const totalPutaran = titikMaster.length * (PATROLI_PUTARAN_LABELS[shift] || []).length;
+    lastPatroliTargetForRekap = totalPutaran;
     const dobel = logs.length - unik;
     wrap.innerHTML = `<div class="pill pill-info mb-1">${unik} titik discan dari ${totalPutaran} target (${titikMaster.length} titik x ${(PATROLI_PUTARAN_LABELS[shift] || []).length} putaran)</div>`
       + (dobel > 0 ? ` <span class="pill pill-warning mb-1"><i class="bi bi-exclamation-triangle"></i> ${dobel} scan dobel diabaikan dari hitungan</span>` : '')
@@ -2377,6 +2420,8 @@ function cariLogPatroliTerkait() {
 }
 function submitRekapPatroliForm(evt) {
   evt.preventDefault();
+  const unik = lastPatroliLogsForRekap ? countUnikTitikPatroli(lastPatroliLogsForRekap) : null;
+  if (!ipgCekKelengkapan('rp', unik, lastPatroliTargetForRekap || unik || 0, 'scan titik patroli', '')) return false;
   const payload = {
     tanggal: val('rpTanggal'), tanggalDinas: ipgGetDinas('rp'), shift: val('rpShift'), regu: val('rpRegu'),
     titikEntries: lastPatroliLogsForRekap, catatanTemuan: val('rpCatatanTemuan'), createdBy: AppState.user.Nama
