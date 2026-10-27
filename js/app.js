@@ -1139,11 +1139,15 @@ function loadMutasiJaga() {
          <div id="tblMutasiJaga"></div>
        </div>`;
   loadJurnalList();
-  google.script.run.withSuccessHandler(res => {
-    renderMutasiJagaDashboard(res.data || []);
-    mjAllRows = res.data || [];
+  muatTabelMutasiJaga(true);
+}
+function muatTabelMutasiJaga(denganRingkasan) {
+  ipgMuatPeriode('MUTASI_JAGA', IPG_DF.ba, { hariIni: !!denganRingkasan }, d => {
+    if (denganRingkasan) renderMutasiJagaDashboard(d.hariIni || []);
+    mjAllRows = d.rows || [];
+    IPG_DF_LAIN.ba = d.lain;
     renderMutasiJagaTable();
-  }).getAllData('MUTASI_JAGA');
+  });
 }
 let mjAllRows = [];
 function renderMutasiJagaTable() {
@@ -1380,10 +1384,10 @@ function selectOptions(list, selected) {
 
 let jurnalListTanggal = ipgTanggalDinas(ipgShiftNow());
 function loadJurnalList() {
-  google.script.run.withSuccessHandler(res => {
-    jurnalListAllData = res.data || [];
+  ipgMuatPeriode('JURNAL_POS', jurnalListTanggal, {}, d => {
+    jurnalListAllData = d.rows || [];
     renderJurnalListTable();
-  }).getAllData('JURNAL_POS');
+  });
 }
 let jurnalListAllData = [];
 function renderJurnalListTable() {
@@ -1400,7 +1404,7 @@ function renderJurnalListTable() {
 }
 function onJurnalListTanggalChange() {
   jurnalListTanggal = val('jurnalListTanggalInput');
-  renderJurnalListTable();
+  loadJurnalList();
 }
 
 // ════════════════════════════════════════════════════════
@@ -1658,15 +1662,17 @@ function cariJurnalTerkait() {
   wrap.innerHTML = '<div class="small text-muted">Mencari...</div>';
   lastJurnalRowsForBA = null; // null = masih memuat → tombol kirim menunggu
   ipgResetPeringatanKurang('mj');
-  google.script.run.withSuccessHandler(res => {
-    const rows = (res.data||[]).filter(r => ipgDinasOf(r)===tanggal && r.Shift===shift && r.PosJaga===pos && r.Regu===regu)
+  ipgMuatPeriode('JURNAL_POS', tanggal, { filter: { Shift: shift, PosJaga: pos, Regu: regu } }, d => {
+    // abaikan jawaban lama kalau pilihan sudah diganti saat menunggu
+    if (ipgGetDinas('mj') !== tanggal || val('mjShift') !== shift || val('mjPos') !== pos || val('mjRegu') !== regu) return;
+    const rows = (d.rows||[]).filter(r => ipgDinasOf(r)===tanggal && r.Shift===shift && r.PosJaga===pos && r.Regu===regu)
       .sort((a,b)=> Number(a.RollingKe||0) - Number(b.RollingKe||0));
     lastJurnalRowsForBA = rows;
     if (rows.length === 0) { wrap.innerHTML = '<div class="small text-muted">Belum ada jurnal tercatat untuk kombinasi Dinas/Shift/Regu/Pos ini.</div>'; return; }
     wrap.innerHTML = `<div class="pill pill-info mb-1">${rows.length} entri jurnal ditemukan — akan tersimpan sebagai Section A</div>
       <div class="table-responsive-ip"><table class="table-ip"><thead><tr><th>Rolling</th><th>Jam</th><th>Petugas</th><th>Kondisi</th><th>Catatan</th></tr></thead>
       <tbody>${rows.map(r=>`<tr><td>Rolling ${r.RollingKe}</td><td>${ipgTglPendek(r.Tanggal)} ${r.JamRolling}</td><td>${r.PetugasLama} → ${r.PetugasBaru}</td><td>${kondisiJurnalPill(r.Kondisi)}</td><td>${r.Catatan||'-'}</td></tr>`).join('')}</tbody></table></div>`;
-  }).getAllData('JURNAL_POS');
+  });
 }
 // ── Cegah BA / Rekap terkirim dengan data kosong atau belum lengkap (cek di HP, tanpa beban server) ──
 // Kosong → ditolak. Belum lengkap → peringatan di form; klik kirim sekali lagi untuk tetap mengirim.
@@ -1741,11 +1747,15 @@ function loadChecklistSarpras() {
          <div id="tblChecklist"></div>
        </div>`;
   loadKondisiSarprasTerkini();
-  google.script.run.withSuccessHandler(res => {
-    renderChecklistSarprasModuleDashboard(res.data || []);
-    csAllRows = res.data || [];
+  muatTabelChecklist(true);
+}
+function muatTabelChecklist(denganRingkasan) {
+  ipgMuatPeriode('CHECKLIST_SARPRAS', IPG_DF.cs, { hariIni: !!denganRingkasan }, d => {
+    if (denganRingkasan) renderChecklistSarprasModuleDashboard(d.hariIni || []);
+    csAllRows = d.rows || [];
+    IPG_DF_LAIN.cs = d.lain;
     renderChecklistTable();
-  }).getAllData('CHECKLIST_SARPRAS');
+  });
 }
 let csAllRows = [];
 function renderChecklistTable() {
@@ -1899,7 +1909,7 @@ function cetakChecklistSarpras(id) {
         { label: 'TL Keamanan', name: r.TLBy }
       ], `Checklist Sarpras ${ipgTanggalDinasPanjang(r)} Shift ${r.Shift} Regu ${r.Regu}`);
     openPrintDocument(body);
-  }).withFailureHandler(e=>showToast('Error',e.message,'danger')).getAllData('CHECKLIST_SARPRAS');
+  }).withFailureHandler(e=>showToast('Error',e.message,'danger')).getRecordById('CHECKLIST_SARPRAS', id);
 }
 
 // ════════════════════════════════════════════════════════
@@ -1930,10 +1940,14 @@ function loadPatroli() {
        </div>`;
   loadPatroliDashboardDetail();
   loadLogPatroliList();
-  google.script.run.withSuccessHandler(res => {
-    rekapAllRows = res.data || [];
+  muatTabelRekapPatroli();
+}
+function muatTabelRekapPatroli() {
+  ipgMuatPeriode('REKAP_PATROLI', IPG_DF.rekap, {}, d => {
+    rekapAllRows = d.rows || [];
+    IPG_DF_LAIN.rekap = d.lain;
     renderRekapPatroliTable();
-  }).getAllData('REKAP_PATROLI');
+  });
 }
 /** Hitung titik+putaran UNIK dari daftar log scan — scan dobel (petugas pilih "Tetap Simpan"
  * saat ada peringatan duplikat) tidak dihitung dua kali, supaya hasilnya tidak lebih dari
@@ -2066,10 +2080,10 @@ function renderPutaranCard(p) {
 let logPatroliTanggal = ipgTanggalDinas(ipgShiftNow());
 let logPatroliAllData = [];
 function loadLogPatroliList() {
-  google.script.run.withSuccessHandler(res => {
-    logPatroliAllData = res.data || [];
+  ipgMuatPeriode('LOG_PATROLI', logPatroliTanggal, {}, d => {
+    logPatroliAllData = d.rows || [];
     renderLogPatroliTable();
-  }).getAllData('LOG_PATROLI');
+  });
 }
 function renderLogPatroliTable() {
   const rows = logPatroliAllData.filter(r => ipgDinasOf(r) === logPatroliTanggal)
@@ -2094,7 +2108,7 @@ function patroliMetodePill(metode) {
 }
 function onLogPatroliTanggalChange() {
   logPatroliTanggal = val('logPatroliTanggalInput');
-  renderLogPatroliTable();
+  loadLogPatroliList();
 }
 function rekapPatroliActions(row) {
   const btns = `<button class="btn btn-outline-ip btn-sm-ip" onclick="cetakRekapPatroli('${row.ID}')"><i class="bi bi-printer"></i></button> `
@@ -2403,10 +2417,11 @@ function cariLogPatroliTerkait() {
   lastPatroliLogsForRekap = null; lastPatroliTargetForRekap = 0;
   ipgResetPeringatanKurang('rp');
   Promise.all([
-    new Promise(resolve => google.script.run.withSuccessHandler(resolve).getAllData('LOG_PATROLI')),
+    new Promise(resolve => google.script.run.withSuccessHandler(resolve).getDataPeriode('LOG_PATROLI', tanggal, { filter: { Shift: shift, Regu: regu } })),
     new Promise(resolve => google.script.run.withSuccessHandler(resolve).getAllData('MASTER_TITIK_PATROLI'))
   ]).then(([logRes, titikRes]) => {
-    const logs = (logRes.data||[]).filter(r => ipgDinasOf(r)===tanggal && r.Shift===shift && r.Regu===regu);
+    if (ipgGetDinas('rp') !== tanggal || val('rpShift') !== shift || val('rpRegu') !== regu) return; // pilihan sudah diganti
+    const logs = ((logRes.data && logRes.data.rows) || []).filter(r => ipgDinasOf(r)===tanggal && r.Shift===shift && r.Regu===regu);
     const titikMaster = titikRes.data || [];
     lastPatroliLogsForRekap = logs;
     const unik = countUnikTitikPatroli(logs);
@@ -2461,7 +2476,7 @@ function buildPatroliMatrixPrintHtml(shift, titikMaster, logs) {
 
 function cetakRekapPatroli(id) {
   Promise.all([
-    new Promise(resolve => google.script.run.withSuccessHandler(resolve).getAllData('REKAP_PATROLI')),
+    new Promise(resolve => google.script.run.withSuccessHandler(resolve).getRecordById('REKAP_PATROLI', id)),
     new Promise(resolve => google.script.run.withSuccessHandler(resolve).getAllData('MASTER_TITIK_PATROLI'))
   ]).then(([rekapRes, titikRes]) => {
     if (!rekapRes.success) { showToast('Gagal', rekapRes.message, 'danger'); return; }
@@ -4806,7 +4821,7 @@ function cetakBAMutasiJaga(id) {
         { label: 'TL Keamanan', name: r.TLBy }
       ], `BA Mutasi Jaga No. ${r.NoBA}`);
     openPrintDocument(body);
-  }).withFailureHandler(e=>showToast('Error',e.message,'danger')).getAllData('MUTASI_JAGA');
+  }).withFailureHandler(e=>showToast('Error',e.message,'danger')).getRecordById('MUTASI_JAGA', id);
 }
 
 
@@ -5149,11 +5164,19 @@ function ipgFotoCetak(url) {
 // Data yang masih diproses (menunggu approval / masih di area) dari tanggal lain diberi pengingat.
 // ════════════════════════════════════════════════════════
 const IPG_DF = {};
+const IPG_DF_LAIN = {}; // jumlah data tanggal lain yang masih diproses (dihitung server saat data dimuat per periode)
+/** Ambil data satu periode dari server (bukan seluruh sheet). tanggal '' = semua tanggal. */
+function ipgMuatPeriode(sheetName, tanggal, opsi, onOk) {
+  google.script.run.withSuccessHandler(res => {
+    if (!res || !res.success) { showToast('Gagal', (res && res.message) || 'Gagal memuat data.', 'danger'); return; }
+    onOk(res.data);
+  }).withFailureHandler(e => showToast('Error', e.message, 'danger')).getDataPeriode(sheetName, tanggal || '', opsi || {});
+}
 const IPG_DF_CFG = {
   // def: tanggal bawaan · cocok: apakah baris milik tanggal t · proses: masih perlu tindakan · render: gambar ulang tabel
-  ba:        { label: 'Tanggal dinas', def: () => ipgTanggalDinas(ipgShiftNow()), cocok: (r, t) => ipgDinasOf(r) === t, proses: r => r.StatusApproval !== 'Selesai', render: () => renderMutasiJagaTable() },
-  cs:        { label: 'Tanggal dinas', def: () => ipgTanggalDinas(ipgShiftNow()), cocok: (r, t) => ipgDinasOf(r) === t, proses: r => r.StatusApproval !== 'Selesai', render: () => renderChecklistTable() },
-  rekap:     { label: 'Tanggal dinas', def: () => ipgTanggalDinas(ipgShiftNow()), cocok: (r, t) => ipgDinasOf(r) === t, proses: r => r.StatusApproval !== 'Selesai', render: () => renderRekapPatroliTable() },
+  ba:        { label: 'Tanggal dinas', def: () => ipgTanggalDinas(ipgShiftNow()), cocok: (r, t) => ipgDinasOf(r) === t, proses: r => r.StatusApproval !== 'Selesai', render: () => renderMutasiJagaTable(), muat: () => muatTabelMutasiJaga() },
+  cs:        { label: 'Tanggal dinas', def: () => ipgTanggalDinas(ipgShiftNow()), cocok: (r, t) => ipgDinasOf(r) === t, proses: r => r.StatusApproval !== 'Selesai', render: () => renderChecklistTable(), muat: () => muatTabelChecklist() },
+  rekap:     { label: 'Tanggal dinas', def: () => ipgTanggalDinas(ipgShiftNow()), cocok: (r, t) => ipgDinasOf(r) === t, proses: r => r.StatusApproval !== 'Selesai', render: () => renderRekapPatroliTable(), muat: () => muatTabelRekapPatroli() },
   tamu:      { label: 'Tanggal kunjungan', def: () => ipgToday(), cocok: (r, t) => String(r.Tanggal || '').slice(0, 10) === t, proses: r => r.StatusApproval === 'Diajukan' || r.StatusKunjungan === 'Di Area', render: () => renderIzinTamuTable() },
   kendaraan: { label: 'Tanggal berlaku', def: () => ipgToday(),
                cocok: (r, t) => { const a = String(r.TanggalMulai || '').slice(0, 10), b = String(r.TanggalSelesai || r.TanggalMulai || '').slice(0, 10); return a && a <= t && t <= (b || a); },
@@ -5178,7 +5201,8 @@ function ipgDfSet(key, v) {
   const inp = document.getElementById('df_' + key), btn = document.getElementById('dfall_' + key);
   if (inp) inp.value = IPG_DF[key];
   if (btn) { btn.classList.toggle('btn-primary-ip', !IPG_DF[key]); btn.classList.toggle('btn-outline-ip', !!IPG_DF[key]); }
-  IPG_DF_CFG[key].render();
+  if (IPG_DF_CFG[key].muat) IPG_DF_CFG[key].muat(); // data per periode → ambil ulang dari server
+  else IPG_DF_CFG[key].render();
 }
 /** Saring baris sesuai tanggal terpilih + tulis pengingat data yang masih diproses di tanggal lain */
 function ipgDfApply(key, rows) {
@@ -5186,9 +5210,9 @@ function ipgDfApply(key, rows) {
   const info = document.getElementById('dfinfo_' + key);
   if (!t) { if (info) info.innerHTML = `<span class="text-muted">Menampilkan semua tanggal (${rows.length} data).</span>`; return { rows: rows.slice() }; }
   const hasil = rows.filter(r => cfg.cocok(r, t));
-  const lain = rows.filter(r => !cfg.cocok(r, t) && cfg.proses(r));
+  const jmlLain = (cfg.muat && typeof IPG_DF_LAIN[key] === 'number') ? IPG_DF_LAIN[key] : rows.filter(r => !cfg.cocok(r, t) && cfg.proses(r)).length;
   if (info) info.innerHTML = `<span class="text-muted">${hasil.length} data pada ${ipgTglPendek(t)}.</span>`
-    + (lain.length ? ` <span class="ipg-df-warn"><i class="bi bi-hourglass-split"></i> ${lain.length} data dari tanggal lain masih diproses</span> `
+    + (jmlLain ? ` <span class="ipg-df-warn"><i class="bi bi-hourglass-split"></i> ${jmlLain} data dari tanggal lain masih diproses</span> `
        + `<span class="pill pill-info" style="cursor:pointer;" onclick="ipgDfSet('${key}','')"><i class="bi bi-eye"></i> Lihat Semua</span>` : '');
   return { rows: hasil };
 }
