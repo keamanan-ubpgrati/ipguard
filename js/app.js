@@ -1714,7 +1714,9 @@ function renderChecklistTable() {
   const f = ipgDfApply('cs', csAllRows);
   {
     renderGenericTable('tblChecklist',
-      [ {label:'Tanggal', render:r=>(r.Tanggal||'').slice(0,10)}, {label:'Shift', key:'Shift'}, {label:'Regu', key:'Regu'}, {label:'Pemeriksa', key:'Pemeriksa'},
+      [ {label:'Tanggal', render:r=>(r.Tanggal||'').slice(0,10)}, {label:'Shift', key:'Shift'}, {label:'Regu', key:'Regu'},
+        {label:'Danru Lama → Baru', render:r=>`${r.DanruLamaBy || r.DanruBy || '-'} → ${r.DanruBaruBy || '-'}`},
+        {label:'Pemeriksa', key:'Pemeriksa'},
         {label:'Jml Item', render:r=>{ try{return JSON.parse(r.ItemsJSON||'[]').length;}catch(e){return 0;} }},
         {label:'Item Rusak', render:r=>{ try{return JSON.parse(r.ItemsJSON||'[]').filter(it=>Number(it.rusak)>0).length;}catch(e){return 0;} }},
         {label:'Status', render:r=>statusPill(r.StatusApproval)} ],
@@ -1908,6 +1910,7 @@ function renderRekapPatroliTable() {
   {
     renderGenericTable('tblRekapPatroli',
       [ {label:'Nomor Rekap', key:'NoRekap'}, {label:'Tanggal', render:r=>(r.Tanggal||'').slice(0,10)}, {label:'Shift', key:'Shift'}, {label:'Regu', key:'Regu'},
+        {label:'Danru Lama → Baru', render:r=>`${r.DanruLamaBy || r.DanruBy || '-'} → ${r.DanruBaruBy || '-'}`},
         {label:'Jml Titik Discan', render:r=>{ try{return countUnikTitikPatroli(JSON.parse(r.TitikEntries||'[]'));}catch(e){return 0;} }},
         {label:'Status', render:r=>statusPill(r.StatusApproval)} ],
       f.rows.sort((a,b)=> new Date(b.WaktuInput)-new Date(a.WaktuInput)),
