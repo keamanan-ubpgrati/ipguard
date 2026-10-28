@@ -2459,6 +2459,17 @@ function submitRekapPatroliForm(evt) {
   return false;
 }
 /** Versi cetak matrix Patroli — style ditulis inline karena jendela cetak tidak memuat CSS aplikasi */
+/** Durasi satu putaran = scan pertama s.d. scan terakhir di putaran itu. Memakai WaktuInput (aman lewat tengah malam). */
+function ipgDurasiPutaran(logs, putaran) {
+  const waktu = logs.filter(l => Number(l.Putaran) === putaran).map(l => {
+    const d = new Date(String(l.WaktuInput || '').replace(' ', 'T'));
+    return isNaN(d) ? null : d.getTime();
+  }).filter(v => v !== null).sort((a, b) => a - b);
+  if (waktu.length < 2) return '-';
+  const menit = Math.round((waktu[waktu.length - 1] - waktu[0]) / 60000);
+  const j = Math.floor(menit / 60), m = menit % 60;
+  return (j ? j + 'j ' : '') + m + 'm';
+}
 function buildPatroliMatrixPrintHtml(shift, titikMaster, logs) {
   const checkpoints = PATROLI_PUTARAN_LABELS[shift];
   if (titikMaster.length === 0) return '<p style="color:#999;">Belum ada Titik Patroli terdaftar di Master Data.</p>';
@@ -2481,7 +2492,7 @@ function buildPatroliMatrixPrintHtml(shift, titikMaster, logs) {
   return `<table style="width:100%;border-collapse:collapse;margin-top:6px;">
     <thead><tr>
       <th style="${thStyle}text-align:left;">Titik Patroli</th>
-      ${checkpoints.map((cp, i) => `<th style="${thStyle}">Putaran ${i + 1}<br><span style="font-weight:400;">${cp}</span></th>`).join('')}
+      ${checkpoints.map((cp, i) => `<th style="${thStyle}">Putaran ${i + 1}<br><span style="font-weight:400;">${cp}</span><br><span style="font-weight:400;font-size:9.5px;color:#0C7A94;">Total ${ipgDurasiPutaran(logs, i + 1)}</span></th>`).join('')}
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
