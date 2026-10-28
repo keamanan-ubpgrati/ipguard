@@ -793,6 +793,14 @@ function statusPill(status) {
   };
   return `<span class="pill ${map[status] || 'pill-neutral'}">${STATUS_TAMPIL[status] || status || '-'}</span>`;
 }
+/** Status 2 baris agar kolom tidak melebar: "Menunggu" di baris 1, tahapnya di baris 2 */
+function statusPill2Baris(status) {
+  const teks = STATUS_TAMPIL[status] || status || '';
+  const m = /^Menunggu (.+)$/.exec(teks);
+  if (!m) return statusPill(status);
+  return statusPill(status).replace('>' + teks + '<', '>Menunggu<br>' + m[1] + '<')
+    .replace('class="pill ', 'style="white-space:normal;line-height:1.25;text-align:center;display:inline-block;" class="pill ');
+}
 
 /** Bungkus google.script.run jadi Promise — dipakai alur async/await (mis. upload Peta Keamanan) */
 function gsRun(fnName, ...args) {
@@ -1165,7 +1173,7 @@ function renderMutasiJagaTable() {
         {label:'Pos', render:r=>`<span class="text-nowrap">${r.PosJaga||'-'}</span>`}, {label:'Shift', key:'Shift'}, {label:'Regu', key:'Regu'},
         {label:'Danru Lama → Baru', render:r=>`${r.DanruLamaBy || '-'} → ${r.DanruBaruBy || '-'}`},
         {label:'Temuan (Sec D)', render: r => r.SectionD_Temuan ? `<span class="pill pill-danger">Ada</span>` : `<span class="pill pill-neutral">Nihil</span>`},
-        {label:'Status', render: r => statusPill(r.StatusApproval)} ],
+        {label:'Status', render: r => statusPill2Baris(r.StatusApproval)} ],
       f.rows.sort((a,b)=> new Date(b.WaktuInput)-new Date(a.WaktuInput)),
       row => withKoreksi('MUTASI_JAGA', row, mutasiJagaActions(row))
     );
@@ -1599,7 +1607,7 @@ function mutasiJagaActions(row) {
   if (row.StatusApproval === 'Menunggu Danru Baru' && ['DANRU','ADMIN'].includes(AppState.user.Role))
     btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('approveMutasiJagaStage',['${row.ID}','DANRU_BARU','${AppState.user.Nama}'],'Diverifikasi Danru Baru',loadMutasiJaga)">Verifikasi Danru Baru</button>`;
   if (row.StatusApproval === 'Menunggu TL Keamanan' && ROLE_APPROVAL_FINAL.includes(AppState.user.Role))
-    btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('approveMutasiJagaStage',['${row.ID}','TL','${AppState.user.Nama}'],'Approval final tersimpan (${ROLE_LABEL[AppState.user.Role]})',loadMutasiJaga)">Approve Final</button>`;
+    btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('approveMutasiJagaStage',['${row.ID}','TL','${AppState.user.Nama}'],'Approval final tersimpan (${ROLE_LABEL[AppState.user.Role]})',loadMutasiJaga)">Approve</button>`;
   return btns || '-';
 }
 // Item baku Section B — Kondisi Pos (hasil diskusi lanjutan)
@@ -1772,7 +1780,7 @@ function renderChecklistTable() {
         {label:'Pemeriksa', key:'Pemeriksa'},
         {label:'Jml Item', render:r=>{ try{return JSON.parse(r.ItemsJSON||'[]').length;}catch(e){return 0;} }},
         {label:'Item Rusak', render:r=>{ try{return JSON.parse(r.ItemsJSON||'[]').filter(it=>Number(it.rusak)>0).length;}catch(e){return 0;} }},
-        {label:'Status', render:r=>statusPill(r.StatusApproval)} ],
+        {label:'Status', render:r=>statusPill2Baris(r.StatusApproval)} ],
       f.rows.sort((a,b)=> new Date(b.WaktuInput)-new Date(a.WaktuInput)),
       row => checklistSarprasActions(row)
     );
@@ -1800,7 +1808,7 @@ function approvalTigaTahapBtns(fn, row, reload, labelDokumen) {
   let btns = '';
   if ((st === 'Menunggu Danru Lama' || st === 'Menunggu Danru') && ['DANRU','ADMIN'].includes(role)) btns += tombol('DANRU_LAMA', 'Verifikasi Danru Lama', labelDokumen + ' diverifikasi Danru Lama');
   if (st === 'Menunggu Danru Baru' && ['DANRU','ADMIN'].includes(role)) btns += tombol('DANRU_BARU', 'Verifikasi Danru Baru', labelDokumen + ' diverifikasi Danru Baru');
-  if (st === 'Menunggu TL Keamanan' && ROLE_APPROVAL_FINAL.includes(role)) btns += tombol('TL', 'Approve Final', labelDokumen + ' disetujui ' + ROLE_LABEL[role]);
+  if (st === 'Menunggu TL Keamanan' && ROLE_APPROVAL_FINAL.includes(role)) btns += tombol('TL', 'Approve', labelDokumen + ' disetujui ' + ROLE_LABEL[role]);
   return btns;
 }
 function checklistSarprasActions(row) {
@@ -1969,7 +1977,7 @@ function renderRekapPatroliTable() {
       [ {label:'Nomor Rekap', key:'NoRekap'}, {label:'Tanggal', render:r=>(r.Tanggal||'').slice(0,10)}, {label:'Shift', key:'Shift'}, {label:'Regu', key:'Regu'},
         {label:'Danru Lama → Baru', render:r=>`${r.DanruLamaBy || r.DanruBy || '-'} → ${r.DanruBaruBy || '-'}`},
         {label:'Jml Titik Discan', render:r=>{ try{return countUnikTitikPatroli(JSON.parse(r.TitikEntries||'[]'));}catch(e){return 0;} }},
-        {label:'Status', render:r=>statusPill(r.StatusApproval)} ],
+        {label:'Status', render:r=>statusPill2Baris(r.StatusApproval)} ],
       f.rows.sort((a,b)=> new Date(b.WaktuInput)-new Date(a.WaktuInput)),
       row => withKoreksi('REKAP_PATROLI', row, rekapPatroliActions(row))
     );
