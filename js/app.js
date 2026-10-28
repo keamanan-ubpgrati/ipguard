@@ -5381,7 +5381,8 @@ function loadKepatuhan() {
   document.getElementById('app-container').innerHTML = sectionHeader('Kepatuhan',
       'Deklarasi bulanan COI (Conflict of Interest) / Gratifikasi tanggal 1–5 dan ' + KEP_PAKTA_JUDUL + ' setiap tahun.')
     + (wajib ? `<div id="kepSayaWrap" class="mb-3"><div class="card-ip text-center text-muted py-4"><span class="spinner-border spinner-border-sm"></span> Memuat...</div></div>` : '')
-    + (pemantau ? `<div id="kepPantauWrap"></div>` : '')
+    + (pemantau ? `<div id="kepPantauWrap" class="mb-3"></div>` : '')
+    + kepKanalPengaduanHtml()
     + (!wajib && !pemantau ? '<div class="card-ip text-muted">Menu ini untuk Satpam, Danru, Kasatpam, TL Keamanan, SPS Keamanan, dan Admin.</div>' : '');
   if (wajib) muatKepatuhanSaya();
   if (pemantau) renderKepPantauKerangka();
@@ -5653,6 +5654,36 @@ function cetakRekapKep() {
         <td style="${td}">${r.deklarasi ? kepWaktu(r.deklarasi.WaktuInput) : '-'}</td><td style="${td}">${r.pakta ? 'Sudah' : 'Belum'}</td></tr>`).join('')}</tbody></table>`
     + buildApprovalTable([{ label: 'Disiapkan oleh', name: AppState.user.Nama }, { label: 'Mengetahui, TL Keamanan / Kasatpam', name: '' }]);
   openPrintDocument(body);
+}
+
+// ── Kanal pengaduan resmi PLN (Alternatif B: grid logo berwarna merek) ──
+const KEP_KANAL_PELANGGAN = [
+  { label: 'Call 123', sub: 'Telepon 24 jam', icon: 'bi-telephone-fill', warna: '#00913E', url: 'tel:123' },
+  { label: 'Website', sub: 'layanan.pln.co.id', icon: 'bi-globe2', warna: '#0C7A94', url: 'https://layanan.pln.co.id/' },
+  { label: 'PLN Mobile', sub: 'Google Play', icon: 'bi-phone-fill', warna: '#00A2B9', url: 'https://play.google.com/store/apps/details?id=com.icon.pln123' },
+  { label: 'Facebook', sub: 'cc123pln', icon: 'bi-facebook', warna: '#1877F2', url: 'https://www.facebook.com/cc123pln' },
+  { label: 'X', sub: '@pln_123', icon: 'bi-twitter-x', warna: '#111111', url: 'https://x.com/pln_123' },
+  { label: 'Instagram', sub: '@pln_id', icon: 'bi-instagram', warna: '#D62976', url: 'https://www.instagram.com/pln_id/' }
+];
+const KEP_KANAL_WBS = 'https://cos.pln.co.id/wbs/lapor';
+function kepKanalPengaduanHtml() {
+  const ubin = k => `<div class="col-4 col-md-2"><a href="${k.url}" ${k.url.startsWith('tel:') ? '' : 'target="_blank" rel="noopener"'}
+      class="d-block text-center h-100 kep-kanal" style="background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:var(--radius-md);padding:.75rem .35rem;text-decoration:none;color:inherit;">
+      <span style="width:42px;height:42px;border-radius:12px;background:${k.warna};color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.25rem;margin:0 auto .4rem;"><i class="bi ${k.icon}"></i></span>
+      <div class="fw-bold" style="font-size:.8rem;">${k.label}</div>
+      <div class="text-muted" style="font-size:.68rem;overflow-wrap:anywhere;">${k.sub}</div></a></div>`;
+  return `<div class="card-ip mb-3">
+    <h6 class="mb-3"><i class="bi bi-megaphone"></i> Kanal Pengaduan Resmi PLN</h6>
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+      <div class="fw-bold">Pengaduan Pelayanan Pelanggan</div><span class="pill pill-info">Non WBS</span></div>
+    <div class="small text-muted mb-2">Listrik padam, kWh meter error, kendala token, gangguan instalasi, pasang baru, ubah daya, dan informasi kelistrikan lainnya.</div>
+    <div class="row g-2 mb-3">${KEP_KANAL_PELANGGAN.map(ubin).join('')}</div>
+    <div class="d-flex align-items-center gap-3 flex-wrap" style="background:var(--tint-red);border-radius:var(--radius-md);padding:.85rem 1rem;">
+      <span style="width:42px;height:42px;border-radius:12px;background:#E53935;color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.25rem;flex-shrink:0;"><i class="bi bi-shield-lock-fill"></i></span>
+      <div class="flex-grow-1" style="min-width:180px;"><div class="fw-bold" style="color:#E53935;">Pengaduan Fraud dan Korupsi (WBS)</div>
+        <div class="small text-muted">Kejadian yang berkaitan dengan fraud, korupsi, atau pelanggaran di lingkungan PT PLN (Persero). Identitas pelapor dirahasiakan.</div></div>
+      <a href="${KEP_KANAL_WBS}" target="_blank" rel="noopener" class="btn btn-sm-ip" style="background:#E53935;color:#fff;border-radius:999px;padding:.4rem 1rem;font-weight:600;">Lapor WBS <i class="bi bi-arrow-up-right"></i></a>
+    </div></div>`;
 }
 
 /** Pengingat di Dashboard untuk Satpam/Danru/Kasatpam yang belum deklarasi bulan ini atau belum tanda tangan Pakta */
