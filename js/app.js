@@ -33,6 +33,7 @@ const MENU = [
   ]},
   { group: 'KEAMANAN & MONITORING', items: [
     { id: 'incident', label: 'Incident / Gangguan', icon: 'bi-exclamation-triangle', roles: 'ALL', aliases: ['incident','insiden','gangguan'] },
+    { id: 'kepatuhan', label: 'Kepatuhan', icon: 'bi-shield-check', roles: ['SATPAM','DANRU','KASATPAM','TL_KEAMANAN','SPS_KEAMANAN','ADMIN'], aliases: ['kepatuhan','coi','gratifikasi','pakta','integritas','smap','deklarasi'] },
     { id: 'kta', label: 'KTA Monitoring', icon: 'bi-person-vcard', roles: 'ALL', aliases: ['kta','kartu tanda anggota'] },
     { id: 'petaKeamanan', label: 'Peta Keamanan', icon: 'bi-map', roles: 'ALL', aliases: ['peta','denah','map'] },
   ]},
@@ -639,7 +640,7 @@ const SECTION_TITLES = {
   checklistSarpras: 'Checklist Sarana & Prasarana', patroli: 'Patroli QR & GPS',
   izinTamu: 'Izin Tamu Masuk', kendaraan: 'Izin Kendaraan Masuk A',
   barangKeluar: 'Pengajuan Barang Keluar', incident: 'Incident & Gangguan Keamanan',
-  kta: 'KTA Monitoring', petaKeamanan: 'Peta Keamanan', sopCenter: 'SOP Center',
+  kta: 'KTA Monitoring', kepatuhan: 'Kepatuhan', petaKeamanan: 'Peta Keamanan', sopCenter: 'SOP Center',
   awarenessCenter: 'Awareness Center', masterData: 'Master Data', administrasi: 'Administrasi Akun',
   tentang: 'Tentang Aplikasi'
 };
@@ -651,7 +652,7 @@ function navigateTo(sectionId, fromHistory) {
   const loaders = {
     dashboard: loadDashboard, mutasiJaga: loadMutasiJaga, checklistSarpras: loadChecklistSarpras,
     patroli: loadPatroli, izinTamu: loadIzinTamu, kendaraan: loadKendaraan, barangKeluar: loadBarangKeluar,
-    incident: loadIncident, kta: loadKta, petaKeamanan: loadPetaKeamanan, sopCenter: loadSopCenter,
+    incident: loadIncident, kta: loadKta, kepatuhan: loadKepatuhan, petaKeamanan: loadPetaKeamanan, sopCenter: loadSopCenter,
     awarenessCenter: loadAwareness, teleponPenting: loadTeleponPenting, masterData: loadMasterData, administrasi: loadAdministrasi,
     tentang: loadTentang
   };
@@ -852,7 +853,7 @@ function openStatusKeamananDrilldown() {
 function loadDashboard() {
   const c = document.getElementById('app-container');
   c.innerHTML = `<div class="text-center py-5"><div class="spinner-border" style="color:#0C7A94"></div></div>`;
-  google.script.run.withSuccessHandler(renderDashboard).withFailureHandler(e=>showToast('Error',e.message,'danger')).getDashboardData();
+  google.script.run.withSuccessHandler(res => { renderDashboard(res); kepBannerDashboard(); }).withFailureHandler(e=>showToast('Error',e.message,'danger')).getDashboardData();
 }
 let dashboardJurnalPosHariIni = [];
 const SHIFT_AKTIF_ICON = { Pagi: 'bi-sun-fill', Sore: 'bi-cloud-sun-fill', Malam: 'bi-moon-stars-fill' };
@@ -5316,4 +5317,356 @@ function simpanFotoBK(id) {
   if (r && (r.FotoUrl || '') === fotoBKModalUrl) { closeFormModal(); return; }
   closeFormModal();
   callServer('setFotoBarangKeluar', [id, fotoBKModalUrl, AppState.user.Nama], null, loadBarangKeluar, 'Menyimpan foto...');
+}
+
+// ════════════════════════════════════════════════════════
+// MODUL KEPATUHAN — Deklarasi bulanan (COI / Gratifikasi / Tidak Ada Kejadian, tgl 1–5)
+// + Pakta Integritas SMAP tahunan. Wajib: Satpam, Danru, Kasatpam. Pemantau: Kasatpam, TL, SPS, Admin.
+// ════════════════════════════════════════════════════════
+const KEP_ROLE_WAJIB = ['SATPAM', 'DANRU', 'KASATPAM'];
+const KEP_ROLE_PEMANTAU = ['KASATPAM', 'TL_KEAMANAN', 'SPS_KEAMANAN', 'ADMIN'];
+const KEP_PAKTA_JUDUL = 'Pakta Integritas SMAP (Sistem Manajemen Anti Penyuapan)';
+const KEP_OPSI = {
+  'COI': { judul: 'Mengalami COI (Conflict of Interest)', sub: 'Konflik kepentingan', icon: 'bi-people-fill', warna: '#0C7A94', tint: 'var(--tint-blue)', pill: 'pill-warning' },
+  'Gratifikasi': { judul: 'Mengalami Gratifikasi', sub: 'Hadiah, uang, jamuan, fasilitas', icon: 'bi-gift-fill', warna: '#FB8C00', tint: 'var(--tint-yellow)', pill: 'pill-warning' },
+  'Tidak Ada Kejadian': { judul: 'Tidak Ada Kejadian', sub: 'Sekali klik selesai', icon: 'bi-check-lg', warna: '#00913E', tint: 'var(--tint-green)', pill: 'pill-success' }
+};
+// Langkah form COI / Gratifikasi (stepper 4 langkah: 3 isian + Kirim)
+const KEP_FORM = {
+  'Gratifikasi': [
+    { judul: 'Kejadian', fields: [
+      { k: 'tanggal', l: 'Tanggal kejadian', t: 'date', req: true },
+      { k: 'bentuk', l: 'Bentuk gratifikasi', t: 'select', req: true, opts: ['Uang', 'Barang', 'Jamuan / makan', 'Fasilitas / akomodasi', 'Lainnya'] },
+      { k: 'nilai', l: 'Perkiraan nilai', t: 'text', ph: 'Contoh: ± Rp300.000' },
+      { k: 'lokasi', l: 'Lokasi', t: 'text', ph: 'Contoh: Pos Utama' }] },
+    { judul: 'Pemberi', fields: [
+      { k: 'pihakNama', l: 'Nama pemberi', t: 'text', req: true },
+      { k: 'pihakInstansi', l: 'Instansi / perusahaan', t: 'text' },
+      { k: 'hubungan', l: 'Hubungan dengan pemberi', t: 'select', req: true, opts: ['Tamu / pengunjung', 'Rekanan / vendor', 'Pegawai internal', 'Masyarakat', 'Lainnya'] }] },
+    { judul: 'Kronologi', fields: [
+      { k: 'sikap', l: 'Sikap terhadap pemberian', t: 'pills', req: true, opts: ['Ditolak', 'Dikembalikan', 'Diterima, lalu dilaporkan'] },
+      { k: 'kronologi', l: 'Kronologi singkat', t: 'textarea', req: true, ph: 'Ceritakan singkat kejadiannya' }] }
+  ],
+  'COI': [
+    { judul: 'Kejadian', fields: [
+      { k: 'tanggal', l: 'Tanggal kejadian', t: 'date', req: true },
+      { k: 'jenisKonflik', l: 'Jenis konflik kepentingan', t: 'select', req: true, opts: ['Hubungan keluarga', 'Hubungan pertemanan', 'Kepentingan usaha / bisnis', 'Pekerjaan sampingan', 'Lainnya'] }] },
+    { judul: 'Pihak Terkait', fields: [
+      { k: 'pihakNama', l: 'Nama pihak terkait', t: 'text', req: true },
+      { k: 'pihakInstansi', l: 'Instansi / perusahaan', t: 'text' },
+      { k: 'hubungan', l: 'Hubungan dengan Anda', t: 'text', ph: 'Contoh: saudara sepupu' }] },
+    { judul: 'Kronologi', fields: [
+      { k: 'uraian', l: 'Uraian singkat', t: 'textarea', req: true, ph: 'Jelaskan situasi konflik kepentingannya' },
+      { k: 'tindakan', l: 'Tindakan yang diambil', t: 'select', req: true, opts: ['Melapor ke atasan', 'Tidak terlibat dalam tugas terkait', 'Lainnya'] }] }
+  ]
+};
+let kepSaya = null, kepRekap = null, kepTab = 'deklarasi', kepPeriode = '', kepForm = null;
+
+function kepBulanLabel(periode) {
+  const [y, m] = String(periode || '').split('-');
+  return (IPG_BULAN_PANJANG[Number(m) - 1] || '') + ' ' + (y || '');
+}
+function kepWaktu(v) { const s = String(v || ''); return s ? ipgTglPendek(s.slice(0, 10)) + ' ' + s.slice(11, 16) : '-'; }
+function kepPillJenis(d) {
+  if (!d) return '<span class="pill pill-danger">Belum</span>';
+  const o = KEP_OPSI[d.Jenis] || {};
+  return `<span class="pill ${o.pill || 'pill-neutral'}">${d.Jenis === 'Tidak Ada Kejadian' ? 'Tidak ada kejadian' : d.Jenis}</span>`
+    + (d.Terlambat === 'Ya' ? ' <span class="pill pill-neutral">Terlambat</span>' : '');
+}
+
+function loadKepatuhan() {
+  const role = AppState.user.Role;
+  const wajib = KEP_ROLE_WAJIB.includes(role), pemantau = KEP_ROLE_PEMANTAU.includes(role);
+  kepPeriode = kepPeriode || ipgToday().slice(0, 7);
+  document.getElementById('app-container').innerHTML = sectionHeader('Kepatuhan',
+      'Deklarasi bulanan COI (Conflict of Interest) / Gratifikasi tanggal 1–5 dan ' + KEP_PAKTA_JUDUL + ' setiap tahun.')
+    + (wajib ? `<div id="kepSayaWrap" class="mb-3"><div class="card-ip text-center text-muted py-4"><span class="spinner-border spinner-border-sm"></span> Memuat...</div></div>` : '')
+    + (pemantau ? `<div id="kepPantauWrap"></div>` : '')
+    + (!wajib && !pemantau ? '<div class="card-ip text-muted">Menu ini untuk Satpam, Danru, Kasatpam, TL Keamanan, SPS Keamanan, dan Admin.</div>' : '');
+  if (wajib) muatKepatuhanSaya();
+  if (pemantau) renderKepPantauKerangka();
+}
+
+// ── Kartu Satpam / Danru / Kasatpam (Alternatif A: 3 kartu besar) ──
+function muatKepatuhanSaya() {
+  google.script.run.withSuccessHandler(res => {
+    if (!res.success) { document.getElementById('kepSayaWrap').innerHTML = `<div class="card-ip text-danger small">${res.message}</div>`; return; }
+    kepSaya = res.data;
+    renderKepatuhanSaya();
+  }).getKepatuhanSaya();
+}
+function renderKepatuhanSaya() {
+  const wrap = document.getElementById('kepSayaWrap');
+  if (!wrap || !kepSaya) return;
+  const d = kepSaya, b = d.bulanIni;
+  const sisa = d.batas - d.tanggal;
+  const badge = b ? '<span class="pill pill-success">Sudah diisi</span>'
+    : sisa >= 0 ? `<span class="pill pill-warning">Batas tgl ${d.batas} · sisa ${sisa + 1} hari</span>`
+    : '<span class="pill pill-danger">Lewat batas tgl ' + d.batas + ' — tetap isi</span>';
+  const tile = (jenis) => { const o = KEP_OPSI[jenis];
+    return `<div role="button" tabindex="0" onclick="pilihDeklarasiKep('${jenis}')" class="d-flex align-items-center gap-3 mb-2"
+      style="background:${o.tint};border-radius:var(--radius-md);padding:.8rem 1rem;cursor:pointer;">
+      <span style="background:${o.warna};color:#fff;border-radius:10px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1.15rem;"><i class="bi ${o.icon}"></i></span>
+      <div><div class="fw-bold">${o.judul}</div><div class="small text-muted">${o.sub}</div></div>
+      <i class="bi bi-chevron-right ms-auto text-muted"></i></div>`; };
+  const hasil = b ? `<div class="d-flex align-items-center gap-3" style="background:${(KEP_OPSI[b.Jenis] || {}).tint};border-radius:var(--radius-md);padding:.8rem 1rem;">
+      <span style="background:${(KEP_OPSI[b.Jenis] || {}).warna};color:#fff;border-radius:10px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="bi ${(KEP_OPSI[b.Jenis] || {}).icon}"></i></span>
+      <div><div class="fw-bold">${(KEP_OPSI[b.Jenis] || {}).judul || b.Jenis}</div><div class="small text-muted">Dikirim ${kepWaktu(b.WaktuInput)}${b.Terlambat === 'Ya' ? ' · terlambat' : ''}</div></div></div>`
+    : tile('COI') + tile('Gratifikasi') + tile('Tidak Ada Kejadian');
+  const p = d.paktaTahunIni;
+  wrap.innerHTML = `<div class="row g-3">
+    <div class="col-lg-7"><div class="card-ip h-100">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <h6 class="mb-0"><i class="bi bi-shield-check"></i> Deklarasi ${kepBulanLabel(d.periode)}</h6>${badge}</div>
+      <div class="section-sub mb-2">Selama bulan ini, apakah Anda mengalami konflik kepentingan atau menerima gratifikasi?</div>
+      ${hasil}
+    </div></div>
+    <div class="col-lg-5"><div class="card-ip h-100">
+      <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
+        <h6 class="mb-0"><i class="bi bi-file-earmark-check"></i> Pakta Integritas SMAP ${d.tahun}</h6>
+        ${p ? '<span class="pill pill-success">Sudah</span>' : '<span class="pill pill-danger">Belum</span>'}</div>
+      <div class="small text-muted mb-2">Sistem Manajemen Anti Penyuapan — ditandatangani sekali setiap tahun.</div>
+      ${p ? `<div class="small mb-2">Ditandatangani ${kepWaktu(p.WaktuTandaTangan)}</div>
+             <button class="btn btn-outline-ip btn-sm-ip" onclick="cetakPaktaKep(kepSaya.paktaTahunIni)"><i class="bi bi-printer"></i> Lihat / Cetak</button>`
+          : `<button class="btn btn-primary-ip w-100" onclick="bukaPaktaKep()"><i class="bi bi-pen"></i> Baca dan tandatangani</button>`}
+      <hr class="my-3">
+      <div class="small fw-bold mb-1">Riwayat deklarasi saya</div>
+      ${(d.riwayat || []).length ? d.riwayat.map(r => `<div class="d-flex justify-content-between align-items-center py-1 small">
+          <span>${kepBulanLabel(r.Periode)}</span><span>${kepPillJenis(r)}</span></div>`).join('') : '<div class="small text-muted">Belum ada.</div>'}
+    </div></div></div>`;
+}
+function pilihDeklarasiKep(jenis) {
+  if (jenis === 'Tidak Ada Kejadian') {
+    openConfirmModal(`Kirim deklarasi "Tidak Ada Kejadian" untuk ${kepBulanLabel(kepSaya.periode)}?\n\nSaya menyatakan selama bulan ini tidak mengalami COI (Conflict of Interest) maupun gratifikasi.`,
+      () => callServer('submitDeklarasiKepatuhan', ['Tidak Ada Kejadian', null], null, muatKepatuhanSaya, 'Mengirim deklarasi...'));
+    return;
+  }
+  kepForm = { jenis, step: 0, data: {} };
+  openFormModal(KEP_OPSI[jenis].judul, '<div id="kepFormWrap"></div>');
+  renderKepForm();
+}
+function renderKepForm() {
+  const wrap = document.getElementById('kepFormWrap');
+  if (!wrap || !kepForm) return;
+  const langkah = KEP_FORM[kepForm.jenis], total = langkah.length + 1, i = kepForm.step;
+  const judulLangkah = langkah.map(s => s.judul).concat(['Kirim']);
+  const stepper = `<div class="d-flex align-items-start mb-3">${judulLangkah.map((j, n) => `
+      ${n ? `<div style="flex:1;height:2px;background:${n <= i ? 'var(--primary)' : 'var(--border-subtle)'};margin:13px 4px 0;"></div>` : ''}
+      <div class="text-center" style="min-width:56px;">
+        <div style="width:26px;height:26px;border-radius:50%;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700;
+          ${n < i ? 'background:var(--primary);color:#fff;' : n === i ? 'background:var(--primary);color:#fff;box-shadow:0 0 0 3px var(--tint-blue);' : 'border:1.5px solid var(--border-subtle);color:var(--text-muted);'}">${n < i ? '<i class="bi bi-check"></i>' : n + 1}</div>
+        <div style="font-size:.7rem;margin-top:3px;${n === i ? 'font-weight:700;' : 'color:var(--text-muted);'}">${j}</div></div>`).join('')}</div>`;
+  let isi;
+  if (i < langkah.length) {
+    isi = '<div class="row g-2">' + langkah[i].fields.map(f => {
+      const v = kepForm.data[f.k] || '', id = 'kepf_' + f.k, wajib = f.req ? ' <span class="text-danger">*</span>' : '';
+      if (f.t === 'select') return `<div class="col-12"><label class="form-label">${f.l}${wajib}</label><select class="form-select" id="${id}"><option value="">— Pilih —</option>${f.opts.map(o => `<option ${o === v ? 'selected' : ''}>${o}</option>`).join('')}</select></div>`;
+      if (f.t === 'textarea') return `<div class="col-12"><label class="form-label">${f.l}${wajib}</label><textarea class="form-control" id="${id}" rows="4" placeholder="${f.ph || ''}">${escHtmlIpg(v)}</textarea></div>`;
+      if (f.t === 'pills') return `<div class="col-12"><label class="form-label">${f.l}${wajib}</label><div class="d-flex flex-wrap gap-2" id="${id}" data-value="${escHtmlIpg(v)}">${f.opts.map(o => `
+          <span class="pill" role="button" onclick="this.parentNode.dataset.value='${o}';renderKepPillsPilih(this.parentNode)" data-opt="${o}"
+            style="cursor:pointer;border:1.5px solid var(--primary);${o === v ? 'background:var(--primary);color:#fff;' : 'background:transparent;color:var(--primary);'}">${o}</span>`).join('')}</div></div>`;
+      return `<div class="col-12"><label class="form-label">${f.l}${wajib}</label><input type="${f.t}" class="form-control" id="${id}" value="${escHtmlIpg(v)}" placeholder="${f.ph || ''}" ${f.t === 'date' ? `max="${ipgToday()}"` : ''}></div>`;
+    }).join('') + '</div>';
+  } else {
+    const semua = langkah.flatMap(s => s.fields);
+    isi = `<div class="table-responsive-ip"><table class="table-ip"><tbody>${semua.map(f => `<tr><td class="text-muted" style="width:40%;">${f.l}</td><td>${escHtmlIpg(kepForm.data[f.k] || '-')}</td></tr>`).join('')}</tbody></table></div>
+      <div class="form-check mt-3"><input class="form-check-input" type="checkbox" id="kepSetuju">
+        <label class="form-check-label small" for="kepSetuju">Saya menyatakan data di atas benar dan dilaporkan dengan jujur sesuai ketentuan SMAP perusahaan.</label></div>`;
+  }
+  wrap.innerHTML = stepper + `<div class="section-sub mb-2">Langkah ${i + 1} dari ${total} — ${judulLangkah[i]}</div>` + isi
+    + `<div class="small text-danger mt-2" id="kepFormErr"></div>
+    <div class="d-flex justify-content-between mt-3">
+      <button class="btn btn-outline-ip" onclick="${i ? 'kepFormLangkah(-1)' : 'closeFormModal()'}">${i ? '<i class="bi bi-arrow-left"></i> Kembali' : 'Batal'}</button>
+      <button class="btn btn-primary-ip" onclick="kepFormLangkah(1)">${i < langkah.length ? 'Lanjut <i class="bi bi-arrow-right"></i>' : '<i class="bi bi-send"></i> Kirim laporan'}</button>
+    </div>`;
+}
+function renderKepPillsPilih(wrap) {
+  wrap.querySelectorAll('[data-opt]').forEach(el => {
+    const on = el.dataset.opt === wrap.dataset.value;
+    el.style.background = on ? 'var(--primary)' : 'transparent'; el.style.color = on ? '#fff' : 'var(--primary)';
+  });
+}
+function kepFormLangkah(arah) {
+  const langkah = KEP_FORM[kepForm.jenis], i = kepForm.step, err = document.getElementById('kepFormErr');
+  if (i < langkah.length) {
+    let kurang = '';
+    langkah[i].fields.forEach(f => {
+      const el = document.getElementById('kepf_' + f.k);
+      const v = f.t === 'pills' ? (el.dataset.value || '') : el.value.trim();
+      kepForm.data[f.k] = v;
+      if (arah > 0 && f.req && !v && !kurang) kurang = f.l;
+    });
+    if (kurang) { err.textContent = kurang + ' wajib diisi.'; return; }
+  } else if (arah > 0) {
+    if (!document.getElementById('kepSetuju').checked) { err.textContent = 'Centang pernyataan terlebih dahulu.'; return; }
+    const detail = Object.assign({}, kepForm.data);
+    closeFormModal();
+    callServer('submitDeklarasiKepatuhan', [kepForm.jenis, detail], null, () => { kepForm = null; muatKepatuhanSaya(); }, 'Mengirim laporan...');
+    return;
+  }
+  kepForm.step = Math.max(0, i + arah);
+  renderKepForm();
+}
+
+// ── Pakta Integritas SMAP ──
+function kepNaskahPakta(p, tahun) {
+  const baris = (l, v) => `<tr><td style="width:120px;padding:2px 0;">${l}</td><td style="padding:2px 6px;">:</td><td style="padding:2px 0;"><b>${escHtmlIpg(v || '-')}</b></td></tr>`;
+  return `<div style="text-align:center;font-weight:700;line-height:1.5;margin-bottom:12px;">PAKTA INTEGRITAS<br>SISTEM MANAJEMEN ANTI PENYUAPAN (SMAP)<br>SATPAM PT PLN INDONESIA POWER UBP GRATI<br>TAHUN ${tahun}</div>
+    <p style="margin:0 0 6px;">Saya yang bertanda tangan di bawah ini:</p>
+    <table style="border-collapse:collapse;margin-bottom:10px;">${baris('Nama', p.Nama)}${baris('Nomor Induk', p.NRP)}${baris('Regu', p.Regu)}</table>
+    <p style="margin:0 0 6px;">Dengan penuh kesadaran dan tanggung jawab, menyatakan komitmen untuk:</p>
+    <ol style="margin:0 0 10px;padding-left:20px;line-height:1.55;">
+      <li>Menjunjung tinggi integritas, kejujuran, dan profesionalisme dalam menjalankan tugas pengamanan sesuai peraturan dan prosedur perusahaan.</li>
+      <li>Tidak menyalahgunakan kewenangan, jabatan, maupun fasilitas keamanan untuk kepentingan pribadi atau pihak lain.</li>
+      <li>Menerapkan prinsip 4 NO's, yaitu:
+        <ul style="margin:2px 0;padding-left:18px;">
+          <li><b>No Bribery:</b> Tidak menerima atau memberikan suap.</li>
+          <li><b>No Kickback:</b> Tidak menerima komisi atau imbalan tidak sah.</li>
+          <li><b>No Gift:</b> Tidak menerima hadiah atau gratifikasi yang bertentangan dengan ketentuan perusahaan.</li>
+          <li><b>No Luxurious Hospitality:</b> Tidak menerima jamuan atau fasilitas berlebihan yang berpotensi menimbulkan konflik kepentingan.</li>
+        </ul></li>
+      <li>Menolak segala bentuk penyuapan, pungutan liar, dan gratifikasi, termasuk imbalan untuk mempermudah akses orang, kendaraan, maupun barang di lingkungan perusahaan.</li>
+      <li>Menghindari konflik kepentingan serta melaporkan setiap indikasi pelanggaran melalui mekanisme pelaporan resmi perusahaan.</li>
+      <li>Bersedia menerima sanksi sesuai ketentuan yang berlaku apabila terbukti melanggar pakta integritas ini.</li>
+    </ol>
+    <p style="margin:0;">Demikian Pakta Integritas ini saya buat dengan penuh kesadaran dan tanpa paksaan dari pihak mana pun.</p>`;
+}
+function kepTglPanjang(ymd) { const d = ipgParseYmd(ymd); return isNaN(d) ? ymd : d.getDate() + ' ' + IPG_BULAN_PANJANG[d.getMonth()] + ' ' + d.getFullYear(); }
+function bukaPaktaKep() {
+  const d = kepSaya;
+  openFormModal(KEP_PAKTA_JUDUL, `<div style="font-size:.88rem;max-height:55vh;overflow:auto;border:1px solid var(--border-subtle);border-radius:var(--radius-md);padding:1rem;">
+      ${kepNaskahPakta(d.personel, d.tahun)}
+      <p class="mt-3 mb-0">Pasuruan, ${kepTglPanjang(ipgToday())}<br>Yang Membuat Pernyataan,<br><b>${escHtmlIpg(d.personel.Nama)}</b></p></div>
+    ${!d.personel.NRP ? '<div class="small text-warning mt-2"><i class="bi bi-exclamation-triangle"></i> Nomor Induk/Regu belum ditemukan di Master Personel (nama akun harus sama dengan nama di Master Personel). Hubungi Admin.</div>' : ''}
+    <div class="form-check mt-3"><input class="form-check-input" type="checkbox" id="kepPaktaSetuju">
+      <label class="form-check-label small" for="kepPaktaSetuju">Saya telah membaca dan menyetujui seluruh isi Pakta Integritas SMAP ini.</label></div>
+    <div class="small text-danger mt-1" id="kepPaktaErr"></div>
+    <button class="btn btn-primary-ip w-100 mt-2" onclick="tandaTanganPaktaKep()"><i class="bi bi-pen"></i> Tandatangani</button>`);
+}
+function tandaTanganPaktaKep() {
+  if (!document.getElementById('kepPaktaSetuju').checked) { document.getElementById('kepPaktaErr').textContent = 'Centang persetujuan terlebih dahulu.'; return; }
+  closeFormModal();
+  callServer('tandaTanganPaktaIntegritas', [], null, muatKepatuhanSaya, 'Menyimpan tanda tangan...');
+}
+function cetakPaktaKep(p) {
+  if (!p) return;
+  const tahun = String(p.Tahun || '').slice(0, 4), tgl = String(p.WaktuTandaTangan || '').slice(0, 10);
+  const body = buildLetterheadHTML('PAKTA INTEGRITAS SMAP', `PI-SMAP/${tahun}/${p.NRP || '-'}`, '')
+    + `<div style="font-size:12px;">${kepNaskahPakta(p, tahun)}</div>
+      <div style="text-align:center;font-size:12px;margin-top:14px;">Pasuruan, ${kepTglPanjang(tgl)}</div>`
+    + buildApprovalTable([{ label: 'Yang Membuat Pernyataan,', name: p.Nama }], `Pakta Integritas SMAP ${tahun} — ${p.Nama} (${p.NRP || '-'})`,
+        `<div style="text-align:center;font-size:10px;color:#666;margin-top:4px;">Ditandatangani digital ${kepWaktu(p.WaktuTandaTangan)}</div>`);
+  openPrintDocument(body);
+}
+
+// ── Tampilan pemantau (Kasatpam / TL / SPS / Admin) — pola KTA ──
+function renderKepPantauKerangka() {
+  document.getElementById('kepPantauWrap').innerHTML = `
+    <div class="row g-2 mb-3" id="kepStatWrap"></div>
+    <div class="card-ip">
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-2" id="kepTabs"></div>
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <label class="small text-muted mb-0" for="kepPeriodeInput">Periode</label>
+        <input type="month" class="form-control form-control-sm" style="width:auto;" id="kepPeriodeInput" value="${kepPeriode}" onchange="kepPeriode=this.value||kepPeriode;muatKepRekap()">
+        <input type="text" class="form-control form-control-sm" style="flex:1;min-width:160px;" id="kepCari" placeholder="Cari nama, NRP, atau regu" oninput="renderKepTabel()">
+        <button class="btn btn-outline-ip btn-sm-ip" onclick="cetakRekapKep()"><i class="bi bi-printer"></i> Cetak rekap</button>
+      </div>
+      <div id="tblKepatuhan"><div class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></div></div>
+    </div>`;
+  renderKepTabs();
+  muatKepRekap();
+}
+function renderKepTabs() {
+  const tabs = [['deklarasi', 'Deklarasi bulanan'], ['pakta', 'Pakta Integritas SMAP']];
+  document.getElementById('kepTabs').innerHTML = tabs.map(([k, l]) => `<button type="button" onclick="kepTab='${k}';renderKepTabs();renderKepTabel()"
+    style="border:1.5px solid var(--primary);border-radius:999px;padding:.35rem .9rem;font-size:.8rem;font-weight:600;
+    background:${kepTab === k ? 'var(--primary)' : 'transparent'};color:${kepTab === k ? '#fff' : 'var(--primary)'};">${l}</button>`).join('');
+}
+function muatKepRekap() {
+  google.script.run.withSuccessHandler(res => {
+    if (!res.success) { document.getElementById('tblKepatuhan').innerHTML = `<div class="text-danger small">${res.message}</div>`; return; }
+    kepRekap = res.data;
+    renderKepStat();
+    renderKepTabel();
+  }).getKepatuhanRekap(kepPeriode);
+}
+function renderKepStat() {
+  const b = kepRekap.baris, n = b.length;
+  const sudah = b.filter(r => r.deklarasi).length, telat = b.filter(r => r.deklarasi && r.deklarasi.Terlambat === 'Ya').length;
+  const coi = b.filter(r => r.deklarasi && r.deklarasi.Jenis === 'COI').length, grat = b.filter(r => r.deklarasi && r.deklarasi.Jenis === 'Gratifikasi').length;
+  const pakta = b.filter(r => r.pakta).length;
+  const cards = [
+    { icon: 'bi-clipboard-check', bg: 'var(--tint-blue)', color: '#0C7A94', value: `${sudah}/${n}`, label: 'Sudah deklarasi ' + kepBulanLabel(kepRekap.periode) },
+    { icon: 'bi-hourglass-split', bg: 'var(--tint-red)', color: '#E53935', value: `${n - sudah} / ${telat}`, label: 'Belum / terlambat' },
+    { icon: 'bi-exclamation-diamond', bg: 'var(--tint-yellow)', color: '#FFC107', value: `${coi} / ${grat}`, label: 'COI / gratifikasi' },
+    { icon: 'bi-file-earmark-check', bg: 'var(--tint-green)', color: '#00913E', value: `${pakta}/${n}`, label: 'Pakta Integritas SMAP ' + kepRekap.tahun }
+  ];
+  document.getElementById('kepStatWrap').innerHTML = cards.map(c => `
+    <div class="col-6 col-lg-3"><div class="stat-card" style="background:${c.bg};border-color:transparent;">
+      <div class="stat-icon" style="background:${c.color};"><i class="bi ${c.icon}"></i></div>
+      <div><div class="stat-value">${c.value}</div><div class="stat-label">${c.label}</div></div>
+    </div></div>`).join('');
+}
+function kepBarisTersaring() {
+  const q = (val('kepCari') || '').trim().toLowerCase();
+  return (kepRekap ? kepRekap.baris : []).filter(r => !q || [r.Nama, r.NRP, r.Regu, r.Jabatan].join(' ').toLowerCase().includes(q));
+}
+function renderKepTabel() {
+  if (!kepRekap) return;
+  const rows = kepBarisTersaring().map((r, i) => Object.assign({ _i: kepRekap.baris.indexOf(r) }, r));
+  if (kepTab === 'deklarasi') {
+    renderGenericTable('tblKepatuhan', [
+      { label: 'Nama', render: r => escHtmlIpg(r.Nama) + (r.diluarMaster ? ' <span class="pill pill-neutral" title="Nama tidak cocok dengan Master Personel">?</span>' : '') },
+      { label: 'NRP', key: 'NRP' }, { label: 'Regu', key: 'Regu' }, { label: 'Jabatan', key: 'Jabatan' },
+      { label: 'Deklarasi ' + kepBulanLabel(kepRekap.periode), render: r => kepPillJenis(r.deklarasi) },
+      { label: 'Diisi', render: r => r.deklarasi ? kepWaktu(r.deklarasi.WaktuInput) : '-' } ],
+      rows, r => (r.deklarasi && r.deklarasi.Jenis !== 'Tidak Ada Kejadian')
+        ? `<button class="btn btn-outline-ip btn-sm-ip" title="Lihat detail" onclick="lihatDetailKep(${r._i})"><i class="bi bi-eye"></i></button>` : '-');
+  } else {
+    renderGenericTable('tblKepatuhan', [
+      { label: 'Nama', key: 'Nama' }, { label: 'NRP', key: 'NRP' }, { label: 'Regu', key: 'Regu' }, { label: 'Jabatan', key: 'Jabatan' },
+      { label: 'Pakta SMAP ' + kepRekap.tahun, render: r => r.pakta ? '<span class="pill pill-success">Sudah</span>' : '<span class="pill pill-danger">Belum</span>' },
+      { label: 'Ditandatangani', render: r => r.pakta ? kepWaktu(r.pakta.WaktuTandaTangan) : '-' } ],
+      rows, r => r.pakta ? `<button class="btn btn-outline-ip btn-sm-ip" title="Cetak" onclick="cetakPaktaKep(kepRekap.baris[${r._i}].pakta)"><i class="bi bi-printer"></i></button>` : '-');
+  }
+}
+function lihatDetailKep(i) {
+  const r = kepRekap.baris[i], d = r && r.deklarasi;
+  if (!d) return;
+  let det = {}; try { det = JSON.parse(d.DetailJSON || '{}'); } catch (e) {}
+  const fields = (KEP_FORM[d.Jenis] || []).flatMap(s => s.fields);
+  openFormModal(`${(KEP_OPSI[d.Jenis] || {}).judul || d.Jenis} — ${escHtmlIpg(r.Nama)}`, `
+    <div class="small text-muted mb-2">${escHtmlIpg(r.NRP || '-')} · Regu ${escHtmlIpg(r.Regu || '-')} · ${kepBulanLabel(d.Periode)} · dikirim ${kepWaktu(d.WaktuInput)}${d.Terlambat === 'Ya' ? ' (terlambat)' : ''}</div>
+    <div class="table-responsive-ip"><table class="table-ip"><tbody>${fields.map(f => `<tr><td class="text-muted" style="width:40%;">${f.l}</td><td>${escHtmlIpg(det[f.k] || '-')}</td></tr>`).join('')}</tbody></table></div>`);
+}
+function cetakRekapKep() {
+  if (!kepRekap) return;
+  const rows = kepBarisTersaring(), td = 'border:1px solid #ccc;padding:5px;font-size:11px;', th = td + 'background:#eef2f8;text-align:left;';
+  const isiDek = r => r.deklarasi ? (r.deklarasi.Jenis + (r.deklarasi.Terlambat === 'Ya' ? ' (terlambat)' : '')) : 'Belum';
+  const body = buildLetterheadHTML('REKAP KEPATUHAN SMAP', `KEP/${kepRekap.periode}`,
+      `Deklarasi ${kepBulanLabel(kepRekap.periode)} &nbsp;|&nbsp; Pakta Integritas SMAP ${kepRekap.tahun} &nbsp;|&nbsp; ${rows.length} personel`)
+    + `<table style="width:100%;border-collapse:collapse;"><thead><tr>
+        <th style="${th}">No</th><th style="${th}">Nama</th><th style="${th}">NRP</th><th style="${th}">Regu</th><th style="${th}">Jabatan</th>
+        <th style="${th}">Deklarasi</th><th style="${th}">Diisi</th><th style="${th}">Pakta SMAP</th></tr></thead>
+      <tbody>${rows.map((r, n) => `<tr><td style="${td}">${n + 1}</td><td style="${td}">${escHtmlIpg(r.Nama)}</td><td style="${td}">${escHtmlIpg(r.NRP || '-')}</td>
+        <td style="${td}">${escHtmlIpg(r.Regu || '-')}</td><td style="${td}">${escHtmlIpg(r.Jabatan || '-')}</td><td style="${td}">${isiDek(r)}</td>
+        <td style="${td}">${r.deklarasi ? kepWaktu(r.deklarasi.WaktuInput) : '-'}</td><td style="${td}">${r.pakta ? 'Sudah' : 'Belum'}</td></tr>`).join('')}</tbody></table>`
+    + buildApprovalTable([{ label: 'Disiapkan oleh', name: AppState.user.Nama }, { label: 'Mengetahui, TL Keamanan / Kasatpam', name: '' }]);
+  openPrintDocument(body);
+}
+
+/** Pengingat di Dashboard untuk Satpam/Danru/Kasatpam yang belum deklarasi bulan ini atau belum tanda tangan Pakta */
+function kepBannerDashboard() {
+  if (!KEP_ROLE_WAJIB.includes(AppState.user.Role)) return;
+  google.script.run.withSuccessHandler(res => {
+    if (!res || !res.success) return;
+    const d = res.data, pesan = [];
+    if (!d.bulanIni) pesan.push(`deklarasi ${kepBulanLabel(d.periode)}${d.tanggal > d.batas ? ' (sudah lewat tanggal ' + d.batas + ')' : ' (batas tanggal ' + d.batas + ')'}`);
+    if (!d.paktaTahunIni) pesan.push('Pakta Integritas SMAP ' + d.tahun);
+    const c = document.getElementById('app-container');
+    if (!pesan.length || !c || document.getElementById('kepBanner')) return;
+    c.insertAdjacentHTML('afterbegin', `<div id="kepBanner" class="alert alert-warning d-flex align-items-center gap-2 flex-wrap" role="alert">
+      <i class="bi bi-shield-exclamation"></i><div class="flex-grow-1">Anda belum mengisi ${pesan.join(' dan ')}.</div>
+      <button class="btn btn-primary-ip btn-sm-ip" onclick="navigateTo('kepatuhan')">Isi sekarang</button></div>`);
+  }).getKepatuhanSaya();
 }
