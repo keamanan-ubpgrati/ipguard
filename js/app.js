@@ -22,9 +22,9 @@ const MENU = [
     { id: 'dashboard', label: 'Dashboard', icon: 'bi-grid-1x2-fill', roles: 'ALL', aliases: ['home','beranda'] },
   ]},
   { group: 'OPERASIONAL JAGA', items: [
-    { id: 'mutasiJaga', label: 'Mutasi Jaga Pos', icon: 'bi-arrow-left-right', roles: ['SATPAM','DANRU','TL_KEAMANAN','SPS_KEAMANAN','ADMIN'], aliases: ['mutasi','jurnal','serah terima','ba'] },
-    { id: 'checklistSarpras', label: 'Checklist Sarpras', icon: 'bi-clipboard-check', roles: ['SATPAM','DANRU','TL_KEAMANAN','SPS_KEAMANAN','ADMIN'], aliases: ['checklist','sarana','prasarana'] },
-    { id: 'patroli', label: 'Patroli QR & GPS', icon: 'bi-geo-alt', roles: ['SATPAM','DANRU','TL_KEAMANAN','SPS_KEAMANAN','ADMIN'], aliases: ['patroli','qr','gps','rounds'] },
+    { id: 'mutasiJaga', label: 'Mutasi Jaga Pos', icon: 'bi-arrow-left-right', roles: ['SATPAM','DANRU','TL_KEAMANAN','KASATPAM','SPS_KEAMANAN','ADMIN'], aliases: ['mutasi','jurnal','serah terima','ba'] },
+    { id: 'checklistSarpras', label: 'Checklist Sarpras', icon: 'bi-clipboard-check', roles: ['SATPAM','DANRU','TL_KEAMANAN','KASATPAM','SPS_KEAMANAN','ADMIN'], aliases: ['checklist','sarana','prasarana'] },
+    { id: 'patroli', label: 'Patroli QR & GPS', icon: 'bi-geo-alt', roles: ['SATPAM','DANRU','TL_KEAMANAN','KASATPAM','SPS_KEAMANAN','ADMIN'], aliases: ['patroli','qr','gps','rounds'] },
   ]},
   { group: 'KONTROL AKSES & LOGISTIK', items: [
     { id: 'izinTamu', label: 'Izin Tamu Masuk', icon: 'bi-person-badge', roles: 'ALL', aliases: ['tamu','visitor'] },
@@ -42,7 +42,7 @@ const MENU = [
     { id: 'teleponPenting', label: 'Telepon Penting', icon: 'bi-telephone-fill', roles: 'ALL', aliases: ['telepon','darurat','emergency','kontak','wa'] },
   ]},
   { group: 'PENGATURAN', items: [
-    { id: 'masterData', label: 'Master Data', icon: 'bi-collection', roles: ['ADMIN','TL_KEAMANAN','SPS_KEAMANAN'], aliases: ['master','personel','pos','titik'] },
+    { id: 'masterData', label: 'Master Data', icon: 'bi-collection', roles: ['ADMIN','TL_KEAMANAN','KASATPAM','SPS_KEAMANAN'], aliases: ['master','personel','pos','titik'] },
     { id: 'administrasi', label: 'Administrasi Akun', icon: 'bi-gear', roles: ['ADMIN'], aliases: ['admin','akun','user'] },
   ]},
   { group: 'LAINNYA', items: [
@@ -53,7 +53,7 @@ const MENU = [
 const IPG_VERSI = '3.4 · 2026.09.29';
 
 const ROLE_LABEL = {
-  ADMIN: 'Admin', SPS_KEAMANAN: 'SPS Keamanan', TL_KEAMANAN: 'TL Keamanan', SATPAM: 'Satpam',
+  ADMIN: 'Admin', SPS_KEAMANAN: 'SPS Keamanan', TL_KEAMANAN: 'TL Keamanan', KASATPAM: 'Kasatpam', SATPAM: 'Satpam',
   DANRU: 'Danru', PEGAWAI: 'Pegawai', MANAJEMEN: 'Manajemen', SPS_BIDANG: 'SPS Bidang'
 };
 
@@ -382,7 +382,7 @@ function enterApp() {
       const raMap = {};
       (res.data.roleMenuAccess || []).forEach(r => {
         const roles = {};
-        Object.keys(ROLE_LABEL).forEach(roleKey => { roles[roleKey] = (r[roleKey] === true || r[roleKey] === 'TRUE'); });
+        Object.keys(ROLE_LABEL).forEach(roleKey => { if (roleKey in r) roles[roleKey] = (r[roleKey] === true || r[roleKey] === 'TRUE'); }); // kolom role belum ada → pakai default menu
         raMap[r.ID] = roles;
       });
       AppState.roleMenuAccess = raMap;
@@ -777,6 +777,11 @@ function fmtDate(d) {
   return dt.toLocaleString('id-ID', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
 }
 
+// Penyetuju (salah satu cukup) — sama dengan ROLE_APPROVAL_FINAL / ROLE_APPROVAL_BK di Kode.gs
+const ROLE_APPROVAL_FINAL = ['TL_KEAMANAN', 'KASATPAM', 'ADMIN'];
+const ROLE_APPROVAL_BK = ['SPS_KEAMANAN', 'TL_KEAMANAN', 'ADMIN'];
+// Teks status yang ditampilkan (nilai di database tetap)
+const STATUS_TAMPIL = { 'Menunggu TL Keamanan': 'Menunggu TL Keamanan / Kasatpam' };
 function statusPill(status) {
   const map = {
     'Baru':'pill-danger','Diajukan':'pill-warning','Menunggu Danru':'pill-warning','Menunggu Danru Lama':'pill-warning',
@@ -786,7 +791,7 @@ function statusPill(status) {
     'Menunggu Check-In':'pill-warning','Di Area':'pill-info','Ditolak':'pill-danger','Aktif':'pill-success',
     'Pending':'pill-warning'
   };
-  return `<span class="pill ${map[status] || 'pill-neutral'}">${status || '-'}</span>`;
+  return `<span class="pill ${map[status] || 'pill-neutral'}">${STATUS_TAMPIL[status] || status || '-'}</span>`;
 }
 
 /** Bungkus google.script.run jadi Promise — dipakai alur async/await (mis. upload Peta Keamanan) */
@@ -1593,8 +1598,8 @@ function mutasiJagaActions(row) {
     btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('approveMutasiJagaStage',['${row.ID}','DANRU_LAMA','${AppState.user.Nama}'],'Diverifikasi Danru Lama',loadMutasiJaga)">Verifikasi Danru Lama</button>`;
   if (row.StatusApproval === 'Menunggu Danru Baru' && ['DANRU','ADMIN'].includes(AppState.user.Role))
     btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('approveMutasiJagaStage',['${row.ID}','DANRU_BARU','${AppState.user.Nama}'],'Diverifikasi Danru Baru',loadMutasiJaga)">Verifikasi Danru Baru</button>`;
-  if (row.StatusApproval === 'Menunggu TL Keamanan' && ['TL_KEAMANAN','ADMIN'].includes(AppState.user.Role))
-    btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('approveMutasiJagaStage',['${row.ID}','TL','${AppState.user.Nama}'],'Disetujui TL Keamanan',loadMutasiJaga)">Approve Final</button>`;
+  if (row.StatusApproval === 'Menunggu TL Keamanan' && ROLE_APPROVAL_FINAL.includes(AppState.user.Role))
+    btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('approveMutasiJagaStage',['${row.ID}','TL','${AppState.user.Nama}'],'Approval final tersimpan (${ROLE_LABEL[AppState.user.Role]})',loadMutasiJaga)">Approve Final</button>`;
   return btns || '-';
 }
 // Item baku Section B — Kondisi Pos (hasil diskusi lanjutan)
@@ -1795,7 +1800,7 @@ function approvalTigaTahapBtns(fn, row, reload, labelDokumen) {
   let btns = '';
   if ((st === 'Menunggu Danru Lama' || st === 'Menunggu Danru') && ['DANRU','ADMIN'].includes(role)) btns += tombol('DANRU_LAMA', 'Verifikasi Danru Lama', labelDokumen + ' diverifikasi Danru Lama');
   if (st === 'Menunggu Danru Baru' && ['DANRU','ADMIN'].includes(role)) btns += tombol('DANRU_BARU', 'Verifikasi Danru Baru', labelDokumen + ' diverifikasi Danru Baru');
-  if (st === 'Menunggu TL Keamanan' && ['TL_KEAMANAN','ADMIN'].includes(role)) btns += tombol('TL', 'Approve Final', labelDokumen + ' disetujui TL Keamanan');
+  if (st === 'Menunggu TL Keamanan' && ROLE_APPROVAL_FINAL.includes(role)) btns += tombol('TL', 'Approve Final', labelDokumen + ' disetujui ' + ROLE_LABEL[role]);
   return btns;
 }
 function checklistSarprasActions(row) {
@@ -1906,7 +1911,7 @@ function cetakChecklistSarpras(id) {
       </table>` + buildApprovalTable([
         { label: 'Danru Lama (Regu Menyerahkan)', name: r.DanruLamaBy || r.DanruBy },
         { label: 'Danru Baru (Regu Menerima)', name: r.DanruBaruBy },
-        { label: 'TL Keamanan', name: r.TLBy }
+        { label: 'TL Keamanan / Kasatpam', name: r.TLBy }
       ], `Checklist Sarpras ${ipgTanggalDinasPanjang(r)} Shift ${r.Shift} Regu ${r.Regu}`);
     openPrintDocument(body);
   }).withFailureHandler(e=>showToast('Error',e.message,'danger')).getRecordById('CHECKLIST_SARPRAS', id);
@@ -2490,7 +2495,7 @@ function cetakRekapPatroli(id) {
       <p style="font-size:12px; margin-top:10px;"><b>Catatan Temuan:</b> ${r.CatatanTemuan || 'Nihil'}</p>` + buildApprovalTable([
         { label: 'Danru Lama (Regu Menyerahkan)', name: r.DanruLamaBy || r.DanruBy },
         { label: 'Danru Baru (Regu Menerima)', name: r.DanruBaruBy },
-        { label: 'TL Keamanan', name: r.TLBy }
+        { label: 'TL Keamanan / Kasatpam', name: r.TLBy }
       ], `Rekap Patroli No. ${r.NoRekap}`);
     openPrintDocument(body);
   });
@@ -2539,7 +2544,7 @@ function renderChecklistSarprasModuleDashboard(rows) {
   }, 0);
   const cards = [
     { icon: 'bi-clipboard-plus', bg: 'var(--tint-blue)', color: '#0C7A94', value: rowsHariIni.length, label: 'Checklist Dibuat Hari Ini' },
-    { icon: 'bi-hourglass-split', bg: 'var(--tint-yellow)', color: '#FFC107', value: rowsHariIni.filter(r=>r.StatusApproval==='Menunggu TL Keamanan').length, label: 'Menunggu Approval TL' },
+    { icon: 'bi-hourglass-split', bg: 'var(--tint-yellow)', color: '#FFC107', value: rowsHariIni.filter(r=>r.StatusApproval==='Menunggu TL Keamanan').length, label: 'Menunggu Approval TL / Kasatpam' },
     { icon: 'bi-check2-circle', bg: 'var(--tint-green)', color: '#00913E', value: rowsHariIni.filter(r=>r.StatusApproval==='Selesai').length, label: 'Selesai Hari Ini' },
     { icon: 'bi-exclamation-triangle', bg: 'var(--tint-red)', color: '#E53935', value: itemRusakHariIni, label: 'Item Rusak Ditemukan Hari Ini' }
   ];
@@ -2911,7 +2916,7 @@ let bkAllRows = [];
 function loadBarangKeluar() {
   ipgDfReset('bk');
   const c = document.getElementById('app-container');
-  c.innerHTML = sectionHeader('Pengajuan Barang Keluar', 'Alur: SPS Bidang ajukan → SPS Keamanan approval digital → cetak surat → Danru periksa fisik & ttd/stempel basah → konfirmasi keluar → (kategori Diperbaiki) konfirmasi kembali → SPS Keamanan close', 'v3.2')
+  c.innerHTML = sectionHeader('Pengajuan Barang Keluar', 'Alur: SPS Bidang ajukan → TL Keamanan / SPS Keamanan approval digital → cetak surat → Danru periksa fisik & ttd/stempel basah → konfirmasi keluar → (kategori Diperbaiki) konfirmasi kembali → SPS Keamanan close', 'v3.2')
     + `<div class="mb-3 d-flex justify-content-end gap-2 flex-wrap">
          <button class="btn btn-outline-ip" onclick="openUnduhLaporanModal('barang_keluar')"><i class="bi bi-file-earmark-arrow-down"></i> Unduh Laporan</button>
          <button class="btn btn-primary-ip" onclick="openBarangKeluarForm()"><i class="bi bi-plus-lg"></i> Ajukan Barang Keluar</button>
@@ -2969,7 +2974,7 @@ function barangKeluarActions(row) {
   let btns = '';
   if (row.Status === 'Diajukan' && (['SPS_KEAMANAN','ADMIN'].includes(AppState.user.Role) || row.CreatedBy === AppState.user.Nama))
     btns += `<button class="btn btn-outline-ip btn-sm-ip" title="${row.FotoUrl ? 'Ganti foto barang' : 'Tambah foto barang'}" onclick="openFotoBKModal('${row.ID}')"><i class="bi bi-camera"></i></button> `;
-  if (row.Status === 'Diajukan' && ['SPS_KEAMANAN','ADMIN'].includes(AppState.user.Role))
+  if (row.Status === 'Diajukan' && ROLE_APPROVAL_BK.includes(AppState.user.Role))
     btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="approveBarangKeluar('${row.ID}')">Approve</button> `
           + `<button class="btn btn-outline-ip btn-sm-ip" onclick="openTolakModal('bk','${row.ID}','${row.NoSurat}')">Tolak</button> `;
   if (row.Status === 'Disetujui' && ['DANRU','ADMIN'].includes(AppState.user.Role))
@@ -3016,7 +3021,7 @@ function openBarangKeluarForm() {
       <div id="bkItemsWrap"></div>
       <hr>
       <label class="form-label mb-1"><b>V. Lampiran Foto</b> <span class="text-muted small">(opsional, 1 foto)</span></label>
-      <div class="small text-muted mb-2">Foto barang yang akan dikeluarkan, untuk diperiksa SPS Keamanan sebelum approval.</div>
+      <div class="small text-muted mb-2">Foto barang yang akan dikeluarkan, untuk diperiksa TL / SPS Keamanan sebelum approval.</div>
       <input type="file" accept="image/*" class="form-control" id="bkFotoInput" onchange="onBkFotoSelected(this, 'bkFotoStatus', 'bk')">
       <div id="bkFotoStatus" class="mt-2"></div>
       <button type="submit" class="btn btn-primary-ip w-100 mt-3">Ajukan (Terbit Nomor Surat Otomatis)</button>
@@ -3265,7 +3270,7 @@ function cetakSuratBarang(noSurat) {
         <tbody>${itemRows}</tbody>
       </table>` + buildApprovalTable([
         { label: 'Pemohon (SPS Bidang)', name: r.SPSBidangPemohon },
-        { label: 'Menyetujui (SPS Keamanan)', name: r.ApprovedBySPS },
+        { label: 'Menyetujui (TL Keamanan / SPS Keamanan)', name: r.ApprovedBySPS },
         { label: 'Diperiksa Fisik (Danru — TTD & Stempel Basah)', name: r.KonfirmasiOlehDanru }
       ], `Surat Barang Keluar No. ${r.NoSurat}`,
       // V. Lampiran Foto — setelah tanda tangan; tidak terpotong, pindah ke halaman berikutnya bila tidak muat
@@ -4465,7 +4470,7 @@ function loadAdministrasi() {
              <input type="text" class="form-control" id="cfgEmailBKAdmin" placeholder="admin@example.com" value="${AppState.config.emailBKAdmin || ''}"></div>
            <div class="col-12"><button class="btn btn-primary-ip" onclick="saveEmailBarangKeluar()"><i class="bi bi-check2"></i> Simpan Email Barang Keluar</button></div>
          </div>
-         <p class="section-sub mt-2 mb-0">Dikirimi email saat ada pengajuan Barang Keluar baru, dan menerima tembusan saat pengajuan disetujui atau ditolak SPS Keamanan. Pemohon ikut dikirimi email keputusan ke alamat di akunnya.</p>
+         <p class="section-sub mt-2 mb-0">Dikirimi email saat ada pengajuan Barang Keluar baru, dan menerima tembusan saat pengajuan disetujui atau ditolak TL / SPS Keamanan. Pemohon ikut dikirimi email keputusan ke alamat di akunnya.</p>
          <p class="section-sub mt-1 mb-0">Satu kolom boleh berisi lebih dari satu alamat, dipisah koma. <b>Kolom kosong dilewati dan tidak memakai kuota email.</b></p>
        </div>
        <div class="card-ip mb-3">
@@ -4654,7 +4659,7 @@ function saveRoleAccessTable() {
         const raMap = {};
         (res.data.roleMenuAccess || []).forEach(r => {
           const roles = {};
-          roleKeys.forEach(rk => { roles[rk] = (r[rk] === true || r[rk] === 'TRUE'); });
+          roleKeys.forEach(rk => { if (rk in r) roles[rk] = (r[rk] === true || r[rk] === 'TRUE'); });
           raMap[r.ID] = roles;
         });
         AppState.roleMenuAccess = raMap;
@@ -4748,7 +4753,7 @@ function cetakLaporanTabel(cfg) {
         <tbody>${tableRows || `<tr><td colspan="${cols.length}" style="text-align:center;padding:16px;color:#999;">Tidak ada data.</td></tr>`}</tbody>
       </table>` + buildApprovalTable([
         { label: 'Disiapkan oleh', name: AppState.user.Nama },
-        { label: 'Mengetahui, TL Keamanan / SPS Keamanan', name: '' }
+        { label: ['JURNAL_POS','MUTASI_JAGA','LOG_PATROLI','REKAP_PATROLI','CHECKLIST_SARPRAS'].includes(cfg.sheet) ? 'Mengetahui, TL Keamanan / Kasatpam' : 'Mengetahui, TL Keamanan / SPS Keamanan', name: '' }
       ]);
     openPrintDocument(body);
   }).withFailureHandler(e=>showToast('Error',e.message,'danger')).getAllData(cfg.sheet);
@@ -4818,7 +4823,7 @@ function cetakBAMutasiJaga(id) {
       </table>` + buildApprovalTable([
         { label: 'Danru Lama (Regu Menyerahkan)', name: r.DanruLamaBy },
         { label: 'Danru Baru (Regu Menerima)', name: r.DanruBaruBy },
-        { label: 'TL Keamanan', name: r.TLBy }
+        { label: 'TL Keamanan / Kasatpam', name: r.TLBy }
       ], `BA Mutasi Jaga No. ${r.NoBA}`);
     openPrintDocument(body);
   }).withFailureHandler(e=>showToast('Error',e.message,'danger')).getRecordById('MUTASI_JAGA', id);
@@ -5278,7 +5283,7 @@ function openFotoBKModal(id) {
   if (!r) return;
   fotoBKModalUrl = r.FotoUrl || '';
   openFormModal(`V. Lampiran Foto — ${escHtmlIpg(r.NoSurat)}`, `
-    <div class="small text-muted mb-2">1 foto barang (opsional). Foto bisa diubah selama pengajuan belum disetujui SPS Keamanan.</div>
+    <div class="small text-muted mb-2">1 foto barang (opsional). Foto bisa diubah selama pengajuan belum disetujui TL / SPS Keamanan.</div>
     <input type="file" accept="image/*" class="form-control" onchange="onBkFotoSelected(this, 'fotoBKModalStatus', 'modal')">
     <div id="fotoBKModalStatus" class="mt-2">${r.FotoUrl ? fotoBKPreviewHtml(r.FotoUrl, 'modal', 'fotoBKModalStatus') : '<span class="small text-muted">Belum ada foto.</span>'}</div>
     <div class="d-flex justify-content-end gap-2 mt-3">
