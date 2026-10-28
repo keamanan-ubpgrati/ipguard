@@ -5712,24 +5712,40 @@ const KEP_KANAL_PELANGGAN = [
   { label: 'X', sub: '@pln_123', icon: 'bi-twitter-x', warna: '#111111', url: 'https://x.com/pln_123' },
   { label: 'Instagram', sub: '@pln_id', icon: 'bi-instagram', warna: '#D62976', url: 'https://www.instagram.com/pln_id/' }
 ];
-const KEP_KANAL_WBS = 'https://cos.pln.co.id/wbs/lapor';
+// Kanal pengaduan PLN Indonesia Power — ubin bisa diklik + kartu informasi saluran fisik
+const KEP_KANAL_IP = [
+  { label: 'Aplikasi WBS', sub: 'cos.pln.co.id', icon: 'bi-shield-lock-fill', warna: '#E53935', url: 'https://cos.pln.co.id/wbs/lapor' },
+  { label: 'WhatsApp / SMS', sub: '081-1979-8888', icon: 'bi-whatsapp', warna: '#25D366', url: 'https://wa.me/628119798888' },
+  { label: 'Email', sub: 'pengaduan@plnindonesiapower.co.id', icon: 'bi-envelope-fill', warna: '#EA4335', url: 'mailto:pengaduan@plnindonesiapower.co.id' },
+  { label: 'Website', sub: 'plnindonesiapower.co.id', icon: 'bi-globe2', warna: '#0C7A94', url: 'https://www.plnindonesiapower.co.id/' }
+];
+const KEP_KANAL_IP_INFO = [
+  { judul: 'Drop Box', isi: 'Lobby Lt. 1 Kantor Pusat PT PLN Indonesia Power', icon: 'bi-inbox-fill', warna: '#023B4A' },
+  { judul: 'Surat Resmi via Pos', isi: 'Kepada: Admin Pengaduan Pelanggaran, Cq. VP Risk Management and Compliance — PT PLN Indonesia Power Head Office, Jl. Jend. Gatot Subroto Kav. 18, Jakarta Selatan 12950', icon: 'bi-envelope-paper-fill', warna: '#7B5EA7' },
+  { judul: 'Fungsi Kepatuhan', isi: 'Cq. Vice President Risk Management and Compliance', icon: 'bi-people-fill', warna: '#FB8C00' }
+];
 function kepKanalPengaduanHtml() {
-  const ubin = k => `<div class="col-4 col-md-2"><a href="${k.url}" ${k.url.startsWith('tel:') ? '' : 'target="_blank" rel="noopener"'}
+  const ubin = (k, kol) => `<div class="${kol}"><a href="${k.url}" ${/^(tel|mailto):/.test(k.url) ? '' : 'target="_blank" rel="noopener"'}
       class="d-block text-center h-100 kep-kanal" style="background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:var(--radius-md);padding:.75rem .35rem;text-decoration:none;color:inherit;">
       <span style="width:42px;height:42px;border-radius:12px;background:${k.warna};color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.25rem;margin:0 auto .4rem;"><i class="bi ${k.icon}"></i></span>
       <div class="fw-bold" style="font-size:.8rem;">${k.label}</div>
       <div class="text-muted" style="font-size:.68rem;overflow-wrap:anywhere;">${k.sub}</div></a></div>`;
+  const info = k => `<div class="col-md-4"><div class="d-flex gap-2 align-items-start h-100" style="background:var(--tint-blue);border-radius:var(--radius-md);padding:.7rem .8rem;">
+      <span style="width:34px;height:34px;border-radius:10px;background:${k.warna};color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="bi ${k.icon}"></i></span>
+      <div><div class="fw-bold" style="font-size:.82rem;">${k.judul}</div><div class="text-muted" style="font-size:.72rem;">${k.isi}</div></div></div></div>`;
   return `<div class="card-ip mb-3">
-    <h6 class="mb-3"><i class="bi bi-megaphone"></i> Kanal Pengaduan Resmi PLN</h6>
+    <h6 class="mb-3"><i class="bi bi-megaphone"></i> Kanal Pengaduan Resmi</h6>
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-      <div class="fw-bold">Pengaduan Pelayanan Pelanggan</div><span class="pill pill-info">Non WBS</span></div>
+      <div class="fw-bold">Pengaduan Pelayanan Pelanggan PLN</div><span class="pill pill-info">Non WBS</span></div>
     <div class="small text-muted mb-2">Listrik padam, kWh meter error, kendala token, gangguan instalasi, pasang baru, ubah daya, dan informasi kelistrikan lainnya.</div>
-    <div class="row g-2 mb-3">${KEP_KANAL_PELANGGAN.map(ubin).join('')}</div>
-    <div class="d-flex align-items-center gap-3 flex-wrap" style="background:var(--tint-red);border-radius:var(--radius-md);padding:.85rem 1rem;">
-      <span style="width:42px;height:42px;border-radius:12px;background:#E53935;color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.25rem;flex-shrink:0;"><i class="bi bi-shield-lock-fill"></i></span>
-      <div class="flex-grow-1" style="min-width:180px;"><div class="fw-bold" style="color:#E53935;">Pengaduan Fraud dan Korupsi (WBS)</div>
-        <div class="small text-muted">Kejadian yang berkaitan dengan fraud, korupsi, atau pelanggaran di lingkungan PT PLN (Persero). Identitas pelapor dirahasiakan.</div></div>
-      <a href="${KEP_KANAL_WBS}" target="_blank" rel="noopener" class="btn btn-sm-ip" style="background:#E53935;color:#fff;border-radius:999px;padding:.4rem 1rem;font-weight:600;">Lapor WBS <i class="bi bi-arrow-up-right"></i></a>
+    <div class="row g-2 mb-3">${KEP_KANAL_PELANGGAN.map(k => ubin(k, 'col-4 col-md-2')).join('')}</div>
+    <div style="border:1.5px solid var(--primary);border-radius:var(--radius-md);padding:.9rem;">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
+        <div class="fw-bold">Pengaduan PLN Indonesia Power</div>
+        <span class="pill" style="background:#023B4A;color:#F7E82E;">Pilih salah satu saluran</span></div>
+      <div class="small text-muted mb-2">Fraud, korupsi, suap, gratifikasi, benturan kepentingan, atau pelanggaran lain di lingkungan PLN Indonesia Power. Identitas pelapor dirahasiakan.</div>
+      <div class="row g-2 mb-2">${KEP_KANAL_IP.map(k => ubin(k, 'col-6 col-md-3')).join('')}</div>
+      <div class="row g-2">${KEP_KANAL_IP_INFO.map(info).join('')}</div>
     </div></div>`;
 }
 
