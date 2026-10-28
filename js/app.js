@@ -5703,15 +5703,6 @@ function cetakRekapKep() {
   openPrintDocument(body);
 }
 
-// ── Kanal pengaduan resmi PLN (Alternatif B: grid logo berwarna merek) ──
-const KEP_KANAL_PELANGGAN = [
-  { label: 'Call 123', sub: 'Telepon 24 jam', icon: 'bi-telephone-fill', warna: '#00913E', url: 'tel:123' },
-  { label: 'Website', sub: 'layanan.pln.co.id', icon: 'bi-globe2', warna: '#0C7A94', url: 'https://layanan.pln.co.id/' },
-  { label: 'PLN Mobile', sub: 'Google Play', icon: 'bi-phone-fill', warna: '#00A2B9', url: 'https://play.google.com/store/apps/details?id=com.icon.pln123' },
-  { label: 'Facebook', sub: 'cc123pln', icon: 'bi-facebook', warna: '#1877F2', url: 'https://www.facebook.com/cc123pln' },
-  { label: 'X', sub: '@pln_123', icon: 'bi-twitter-x', warna: '#111111', url: 'https://x.com/pln_123' },
-  { label: 'Instagram', sub: '@pln_id', icon: 'bi-instagram', warna: '#D62976', url: 'https://www.instagram.com/pln_id/' }
-];
 // Kanal pengaduan PLN Indonesia Power — ubin bisa diklik + kartu informasi saluran fisik
 const KEP_KANAL_IP = [
   { label: 'Aplikasi WBS', sub: 'cos.pln.co.id', icon: 'bi-shield-lock-fill', warna: '#E53935', url: 'https://cos.pln.co.id/wbs/lapor' },
@@ -5734,15 +5725,11 @@ function kepKanalPengaduanHtml() {
       <span style="width:34px;height:34px;border-radius:10px;background:${k.warna};color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="bi ${k.icon}"></i></span>
       <div><div class="fw-bold" style="font-size:.82rem;">${k.judul}</div><div class="text-muted" style="font-size:.72rem;">${k.isi}</div></div></div></div>`;
   return `<div class="card-ip mb-3">
-    <h6 class="mb-3"><i class="bi bi-megaphone"></i> Kanal Pengaduan Resmi</h6>
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-      <div class="fw-bold">Pengaduan Pelayanan Pelanggan PLN</div><span class="pill pill-info">Non WBS</span></div>
-    <div class="small text-muted mb-2">Listrik padam, kWh meter error, kendala token, gangguan instalasi, pasang baru, ubah daya, dan informasi kelistrikan lainnya.</div>
-    <div class="row g-2 mb-3">${KEP_KANAL_PELANGGAN.map(k => ubin(k, 'col-4 col-md-2')).join('')}</div>
-    <div style="border:1.5px solid var(--primary);border-radius:var(--radius-md);padding:.9rem;">
+    <h6 class="mb-3"><i class="bi bi-megaphone"></i> Kanal Pengaduan PLN Indonesia Power</h6>
+    <div>
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
-        <div class="fw-bold">Pengaduan PLN Indonesia Power</div>
-        <span class="pill" style="background:#023B4A;color:#F7E82E;">Pilih salah satu saluran</span></div>
+        <div class="small fw-bold">Pilih salah satu saluran</div>
+        <span class="pill" style="background:#023B4A;color:#F7E82E;">WBS · Whistleblowing System</span></div>
       <div class="small text-muted mb-2">Fraud, korupsi, suap, gratifikasi, benturan kepentingan, atau pelanggaran lain di lingkungan PLN Indonesia Power. Identitas pelapor dirahasiakan.</div>
       <div class="row g-2 mb-2">${KEP_KANAL_IP.map(k => ubin(k, 'col-6 col-md-3')).join('')}</div>
       <div class="row g-2">${KEP_KANAL_IP_INFO.map(info).join('')}</div>
