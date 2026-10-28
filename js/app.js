@@ -3100,7 +3100,7 @@ const JENIS_LAPORAN_LABELS = {
 };
 let PLN_PRINT_LOGO = ''; // diisi belakangan oleh loadDefaultPrintLogo() — supaya tidak ikut memberatkan halaman login
 /** jenisOrTitle: key jenis laporan (pakai config Admin) ATAU judul teks langsung (kompatibel dgn pemanggilan lama/generik) */
-function buildLetterheadHTML(jenisOrTitle, arg2, arg3) {
+function buildLetterheadHTML(jenisOrTitle, arg2, arg3, meta) {
   const isKnownType = JENIS_LAPORAN_LABELS.hasOwnProperty(jenisOrTitle);
   const namaUnit = (AppState.config && AppState.config.namaUnit) || 'PT PLN INDONESIA POWER UBP GRATI';
   const namaSistem = (AppState.config && AppState.config.namaSistem) || 'IP GUARD V3 — SISTEM MANAJEMEN PENGAMANAN';
@@ -3115,7 +3115,7 @@ function buildLetterheadHTML(jenisOrTitle, arg2, arg3) {
   } else {
     judul = jenisOrTitle;
     noDokumen = arg2 || '-';
-    tanggalTerbit = '-'; revisi = '-';
+    tanggalTerbit = (meta && meta.tanggalTerbit) || '-'; revisi = (meta && meta.revisi) || '-';
     metaLines = arg3;
   }
   const logoSrc = (AppState.config && AppState.config.logoUrl) ? AppState.config.logoUrl : PLN_PRINT_LOGO;
@@ -5559,7 +5559,7 @@ function kepFormLangkah(arah) {
 // ── Pakta Integritas SMAP ──
 function kepNaskahPakta(p, tahun) {
   const baris = (l, v) => `<tr><td style="width:120px;padding:2px 0;">${l}</td><td style="padding:2px 6px;">:</td><td style="padding:2px 0;"><b>${escHtmlIpg(v || '-')}</b></td></tr>`;
-  return `<div style="text-align:center;font-weight:700;line-height:1.5;margin-bottom:12px;">PAKTA INTEGRITAS<br>SISTEM MANAJEMEN ANTI PENYUAPAN (SMAP)<br>SATPAM PT PLN INDONESIA POWER UBP GRATI<br>TAHUN ${tahun}</div>
+  return `<div style="text-align:center;font-weight:700;line-height:1.5;margin-bottom:12px;">SATPAM PT PLN INDONESIA POWER UBP GRATI<br>TAHUN ${tahun}</div>
     <p style="margin:0 0 6px;">Saya yang bertanda tangan di bawah ini:</p>
     <table style="border-collapse:collapse;margin-bottom:10px;">${baris('Nama', p.Nama)}${baris('Nomor Induk', p.NRP)}${baris('Regu', p.Regu)}</table>
     <p style="margin:0 0 6px;">Dengan penuh kesadaran dan tanggung jawab, menyatakan komitmen untuk:</p>
@@ -5599,7 +5599,7 @@ function tandaTanganPaktaKep() {
 function cetakPaktaKep(p) {
   if (!p) return;
   const tahun = String(p.Tahun || '').slice(0, 4), tgl = String(p.WaktuTandaTangan || '').slice(0, 10);
-  const body = buildLetterheadHTML('PAKTA INTEGRITAS SMAP', `PI-SMAP/${tahun}/${p.NRP || '-'}`, '')
+  const body = buildLetterheadHTML('PAKTA INTEGRITAS SMAP', `PI-SMAP/${tahun}/${p.NRP || '-'}`, '', { tanggalTerbit: '1 Agustus 2026', revisi: '00' })
     + `<div style="font-size:12px;">${kepNaskahPakta(p, tahun)}</div>
       <div style="text-align:center;font-size:12px;margin-top:14px;">Pasuruan, ${kepTglPanjang(tgl)}</div>`
     + buildApprovalTable([{ label: 'Yang Membuat Pernyataan,', name: p.Nama }], `Pakta Integritas SMAP ${tahun} — ${p.Nama} (${p.NRP || '-'})`,
