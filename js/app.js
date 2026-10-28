@@ -4466,6 +4466,8 @@ function gantiKodeQrTitik(id) {
 function loadAdministrasi() {
   const c = document.getElementById('app-container');
   c.innerHTML = sectionHeader('Administrasi Akun & Konfigurasi Sistem', '8 Role, approval registrasi, audit trail — khusus Admin')
+    + `<div class="card-ip mb-3" id="backupArsipCard"><h6 class="mb-2"><i class="bi bi-archive"></i> Backup & Arsip Data</h6>
+         <div class="small text-muted"><span class="spinner-border spinner-border-sm"></span> Memuat status...</div></div>`
     + `<div class="card-ip mb-3">
          <h6 class="mb-2"><i class="bi bi-envelope-gear"></i> Konfigurasi Notifikasi</h6>
          <label class="form-label mb-1">Tujuan Notifikasi Izin Tamu Masuk</label>
@@ -4575,6 +4577,51 @@ function loadAdministrasi() {
         + ` <button class="btn btn-outline-ip btn-sm-ip" title="Buka kalau akun ini terkunci akibat 5x salah login" onclick="resetLoginLockUser('${escHtmlIpg(row.Username)}')"><i class="bi bi-unlock"></i> Buka Kunci</button>`
     );
   }).getAllData('USERS');
+  muatStatusBackupArsip();
+}
+
+// ── Backup & Arsip Data (Admin) ──
+function muatStatusBackupArsip() {
+  google.script.run.withSuccessHandler(res => {
+    const el = document.getElementById('backupArsipCard');
+    if (!el) return;
+    if (!res.success) { el.innerHTML = `<h6 class="mb-2"><i class="bi bi-archive"></i> Backup & Arsip Data</h6><div class="small text-danger">${res.message}</div>`; return; }
+    const d = res.data;
+    const jadwal = (ok, teks) => `<span class="pill ${ok ? 'pill-success' : 'pill-danger'}">${ok ? 'Terpasang' : 'Belum terpasang'}</span> <span class="small text-muted">${teks}</span>`;
+    el.innerHTML = `<h6 class="mb-2"><i class="bi bi-archive"></i> Backup & Arsip Data</h6>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="fw-bold small mb-1">Backup penuh bulanan</div>
+          <div class="mb-1">${jadwal(d.jadwalBackup, 'tiap tanggal 1 pukul 23.00 · disimpan 12 bulan')}</div>
+          <div class="small text-muted mb-2">Terakhir: ${escHtmlIpg(d.backupTerakhir || 'belum ada')} · folder Drive "Backup IP GUARD"</div>
+          <div class="fw-bold small mb-1 mt-2">Arsip Jurnal Pos, Log Patroli, Audit Trail</div>
+          <div class="mb-1">${jadwal(d.jadwalArsip, 'tiap tanggal 2 pukul 02.00')}</div>
+          <div class="small text-muted">Sheet aktif menyimpan ${d.simpanBulan} bulan terakhir + bulan berjalan. Data sebelum <b>${ipgTglPendek(d.batas)} ${d.batas.slice(0, 4)}</b> dipindah ke file "IPGUARD_ARSIP_tahun" di folder Drive "Arsip IP GUARD", dan tetap bisa dibuka lewat filter tanggal dan Unduh Laporan.</div>
+        </div>
+        <div class="col-md-6">
+          <div class="fw-bold small mb-1">Riwayat arsip</div>
+          ${(d.arsipTerakhir || []).length ? d.arsipTerakhir.map(a => `<div class="d-flex justify-content-between small py-1 border-bottom"><span>${escHtmlIpg(a.Modul)} <span class="text-muted">(${escHtmlIpg(String(a.TahunArsip))})</span></span><span>${a.JumlahBaris} baris · ${String(a.Tanggal || '').slice(0, 16)}</span></div>`).join('') : '<div class="small text-muted">Belum pernah diarsip.</div>'}
+          <div id="pratinjauArsipWrap" class="mt-2"></div>
+        </div>
+      </div>
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        ${!(d.jadwalBackup && d.jadwalArsip) ? `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('pasangJadwalBackupArsip',[],null,muatStatusBackupArsip,'Memasang jadwal...')"><i class="bi bi-calendar-check"></i> Pasang jadwal otomatis</button>` : ''}
+        <button class="btn btn-outline-ip btn-sm-ip" onclick="callServer('jalankanBackupSekarang',[],null,muatStatusBackupArsip,'Membuat backup...')"><i class="bi bi-cloud-arrow-up"></i> Backup sekarang</button>
+        <button class="btn btn-outline-ip btn-sm-ip" onclick="pratinjauArsipAdmin()"><i class="bi bi-search"></i> Pratinjau arsip</button>
+      </div>`;
+  }).getStatusBackupArsip();
+}
+function pratinjauArsipAdmin() {
+  const w = document.getElementById('pratinjauArsipWrap');
+  w.innerHTML = '<div class="small text-muted"><span class="spinner-border spinner-border-sm"></span> Menghitung...</div>';
+  google.script.run.withSuccessHandler(res => {
+    if (!res.success) { w.innerHTML = `<div class="small text-danger">${res.message}</div>`; return; }
+    const total = res.data.hasil.reduce((n, h) => n + h.pindah, 0);
+    w.innerHTML = `<div class="small fw-bold">Akan dipindah (data sebelum ${ipgTglPendek(res.data.batas)} ${res.data.batas.slice(0, 4)}):</div>`
+      + res.data.hasil.map(h => `<div class="d-flex justify-content-between small"><span>${h.modul}</span><span>${h.pindah} dari ${h.total} baris</span></div>`).join('')
+      + (total ? `<button class="btn btn-outline-ip btn-sm-ip mt-2" onclick="openConfirmModal('Pindahkan ${total} baris lama ke file arsip sekarang?\n\nPastikan backup bulan ini sudah ada. Data disalin dan dicocokkan dulu sebelum dihapus dari sheet aktif.', () => callServer('jalankanArsipSekarang',[],null,muatStatusBackupArsip,'Mengarsip data...'))"><i class="bi bi-archive"></i> Jalankan arsip sekarang</button>`
+               : '<div class="small text-muted mt-1">Belum ada data yang perlu diarsip.</div>');
+  }).pratinjauArsip();
 }
 /** Admin: reset kunci login (5x gagal → terkunci 15 menit) tanpa perlu buka Apps Script */
 function resetLoginLockUser(username) {
