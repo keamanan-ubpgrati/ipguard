@@ -782,7 +782,7 @@ function fmtDate(d) {
 const ROLE_APPROVAL_FINAL = ['TL_KEAMANAN', 'KASATPAM', 'ADMIN'];
 const ROLE_APPROVAL_BK = ['SPS_KEAMANAN', 'TL_KEAMANAN', 'ADMIN'];
 // Teks status yang ditampilkan (nilai di database tetap)
-const STATUS_TAMPIL = { 'Menunggu TL Keamanan': 'Menunggu TL Keamanan / Kasatpam' };
+const STATUS_TAMPIL = { 'Menunggu TL Keamanan': 'Menunggu TL / Kasatpam' };
 function statusPill(status) {
   const map = {
     'Baru':'pill-danger','Diajukan':'pill-warning','Menunggu Danru':'pill-warning','Menunggu Danru Lama':'pill-warning',
@@ -799,7 +799,7 @@ function statusPill2Baris(status) {
   const teks = STATUS_TAMPIL[status] || status || '';
   const m = /^Menunggu (.+)$/.exec(teks);
   if (!m) return statusPill(status);
-  return statusPill(status).replace('>' + teks + '<', '>Menunggu<br>' + m[1] + '<')
+  return statusPill(status).replace('>' + teks + '<', '>Menunggu<br><span style="white-space:nowrap;">' + m[1] + '</span><')
     .replace('class="pill ', 'style="white-space:normal;line-height:1.25;text-align:center;display:inline-block;" class="pill ');
 }
 
