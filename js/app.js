@@ -1130,7 +1130,7 @@ function sectionHeader(title, sub, badge) {
 // MODUL: MUTASI JAGA POS — 5 Section (PRD Bab 7.2)
 // ════════════════════════════════════════════════════════
 function loadMutasiJaga() {
-  ipgDfReset('ba');
+  ipgDfReset('ba'); ipgDfReset('jurnal');
   const c = document.getElementById('app-container');
   c.innerHTML = sectionHeader('Mutasi Jaga Pos — Serah Terima 5 Section', 'Jurnal ringkas tiap 2 jam (referensi) + Berita Acara di akhir shift (Danru Lama → Danru Baru → TL Keamanan)')
     + `<div class="mb-3 d-flex justify-content-end gap-2 flex-wrap">
@@ -1142,8 +1142,8 @@ function loadMutasiJaga() {
        <div class="card-ip mb-3">
          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
            <h6 class="mb-0"><i class="bi bi-journal-text"></i> Jurnal Pos Jaga <span class="badge-prd">tanpa approval</span></h6>
-           <label class="small text-muted mb-0" for="jurnalListTanggalInput">Tanggal dinas</label><input type="date" class="form-control form-control-sm" id="jurnalListTanggalInput" style="width:auto;" title="Hari operasional: Malam (malam sebelumnya) + Pagi + Sore. Contoh: Malam 24/25 → pilih 25" value="${jurnalListTanggal}" onchange="onJurnalListTanggalChange()">
          </div>
+         ${ipgDfBar('jurnal')}
          <div id="tblJurnalPos"></div>
        </div>
        <div class="card-ip">
@@ -1396,16 +1396,17 @@ function selectOptions(list, selected) {
   return list.map(o => `<option ${o===selected?'selected':''}>${o}</option>`).join('');
 }
 
-let jurnalListTanggal = ipgTanggalDinas(ipgShiftNow());
 function loadJurnalList() {
-  ipgMuatPeriode('JURNAL_POS', jurnalListTanggal, {}, d => {
+  ipgDfReset('jurnal');
+  ipgMuatPeriode('JURNAL_POS', IPG_DF.jurnal, {}, d => {
     jurnalListAllData = d.rows || [];
+    IPG_DF_ARSIP.jurnal = !!d.dariArsip;
     renderJurnalListTable();
   });
 }
 let jurnalListAllData = [];
 function renderJurnalListTable() {
-  const rows = jurnalListAllData.filter(r => ipgDinasOf(r) === jurnalListTanggal)
+  const rows = ipgDfApply('jurnal', jurnalListAllData).rows
     .sort((a,b)=> new Date(b.WaktuInput)-new Date(a.WaktuInput));
   renderGenericTable('tblJurnalPos',
     [ {label:'Tanggal', render:r=>ipgTglPendek(r.Tanggal)}, {label:'Dinas', render:r=>ipgLabelDinas(ipgDinasOf(r), r.Shift)}, {label:'Rolling ke', render:r=>`Rolling ${r.RollingKe}`}, {label:'Jam Rolling', key:'JamRolling'},
@@ -1415,10 +1416,6 @@ function renderJurnalListTable() {
       {label:'Catatan', key:'Catatan'} ],
     rows, isAdminIpg() ? (row => withKoreksi('JURNAL_POS', row, '')) : undefined
   );
-}
-function onJurnalListTanggalChange() {
-  jurnalListTanggal = val('jurnalListTanggalInput');
-  loadJurnalList();
 }
 
 // ════════════════════════════════════════════════════════
@@ -1930,6 +1927,7 @@ function cetakChecklistSarpras(id) {
 // MODUL: PATROLI — 2 lapis: Log Titik (tanpa approval) + Rekap Shift (Danru→TL), PRD 7.2
 // ════════════════════════════════════════════════════════
 function loadPatroli() {
+  ipgDfReset('logp');
   ipgDfReset('rekap');
   const c = document.getElementById('app-container');
   c.innerHTML = sectionHeader('Patroli QR & GPS', 'Log titik tiap checkpoint (referensi) + Rekap per shift (Danru Lama → Danru Baru → TL Keamanan)')
@@ -1942,8 +1940,8 @@ function loadPatroli() {
        <div class="card-ip mb-3">
          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
            <h6 class="mb-0"><i class="bi bi-geo-alt-fill"></i> Log Titik Patroli <span class="badge-prd">Referensi, tanpa approval</span></h6>
-           <label class="small text-muted mb-0" for="logPatroliTanggalInput">Tanggal dinas</label><input type="date" class="form-control form-control-sm" id="logPatroliTanggalInput" style="width:auto;" title="Hari operasional: Malam (malam sebelumnya) + Pagi + Sore. Contoh: Malam 24/25 → pilih 25" value="${logPatroliTanggal}" onchange="onLogPatroliTanggalChange()">
          </div>
+         ${ipgDfBar('logp')}
          <div id="tblLogPatroli"></div>
        </div>
        <div class="card-ip">
@@ -2091,16 +2089,17 @@ function renderPutaranCard(p) {
     </div>`;
 }
 
-let logPatroliTanggal = ipgTanggalDinas(ipgShiftNow());
 let logPatroliAllData = [];
 function loadLogPatroliList() {
-  ipgMuatPeriode('LOG_PATROLI', logPatroliTanggal, {}, d => {
+  ipgDfReset('logp');
+  ipgMuatPeriode('LOG_PATROLI', IPG_DF.logp, {}, d => {
     logPatroliAllData = d.rows || [];
+    IPG_DF_ARSIP.logp = !!d.dariArsip;
     renderLogPatroliTable();
   });
 }
 function renderLogPatroliTable() {
-  const rows = logPatroliAllData.filter(r => ipgDinasOf(r) === logPatroliTanggal)
+  const rows = ipgDfApply('logp', logPatroliAllData).rows
     .sort((a,b)=> new Date(b.WaktuInput)-new Date(a.WaktuInput));
   renderGenericTable('tblLogPatroli',
     [ {label:'Tanggal', render:r=>ipgTglPendek(r.Tanggal)}, {label:'Jam Scan', key:'JamScan'}, {label:'Putaran', render:r=>`#${r.Putaran}`}, {label:'Dinas', render:r=>ipgLabelDinas(ipgDinasOf(r), r.Shift)}, {label:'Regu', key:'Regu'},
@@ -2119,10 +2118,6 @@ function patroliStatusPill(status) {
 function patroliMetodePill(metode) {
   return metode === 'QR' ? '<span class="pill pill-info"><i class="bi bi-qr-code"></i> QR</span>'
                          : '<span class="pill pill-neutral"><i class="bi bi-geo-alt"></i> GPS</span>';
-}
-function onLogPatroliTanggalChange() {
-  logPatroliTanggal = val('logPatroliTanggalInput');
-  loadLogPatroliList();
 }
 function rekapPatroliActions(row) {
   const btns = `<button class="btn btn-outline-ip btn-sm-ip" onclick="cetakRekapPatroli('${row.ID}')"><i class="bi bi-printer"></i></button> `
@@ -4595,8 +4590,8 @@ function muatStatusBackupArsip() {
           <div class="mb-1">${jadwal(d.jadwalBackup, 'tiap tanggal 1 pukul 23.00 · disimpan 12 bulan')}</div>
           <div class="small text-muted mb-2">Terakhir: ${escHtmlIpg(d.backupTerakhir || 'belum ada')} · folder Drive "Backup IP GUARD"</div>
           <div class="fw-bold small mb-1 mt-2">Arsip Jurnal Pos, Log Patroli, Audit Trail</div>
-          <div class="mb-1">${jadwal(d.jadwalArsip, 'tiap tanggal 2 pukul 02.00')}</div>
-          <div class="small text-muted">Sheet aktif menyimpan ${d.simpanBulan} bulan terakhir + bulan berjalan. Data sebelum <b>${ipgTglPendek(d.batas)} ${d.batas.slice(0, 4)}</b> dipindah ke file "IPGUARD_ARSIP_tahun" di folder Drive "Arsip IP GUARD", dan tetap bisa dibuka lewat filter tanggal dan Unduh Laporan.</div>
+          <div class="mb-1">${jadwal(d.jadwalArsip && d.versiJadwal === 'bulanan-tgl3', 'tiap tanggal 3 pukul 02.00')}</div>
+          <div class="small text-muted">Sheet aktif hanya menyimpan bulan berjalan. Data sebelum <b>${ipgTglPendek(d.batas)} ${d.batas.slice(0, 4)}</b> dipindah ke file "IPGUARD_ARSIP_tahun" di folder Drive "Arsip IP GUARD", dan tetap bisa dibuka lewat filter tanggal dan Unduh Laporan.</div>
         </div>
         <div class="col-md-6">
           <div class="fw-bold small mb-1">Riwayat arsip</div>
@@ -4605,7 +4600,7 @@ function muatStatusBackupArsip() {
         </div>
       </div>
       <div class="d-flex flex-wrap gap-2 mt-3">
-        ${!(d.jadwalBackup && d.jadwalArsip) ? `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('pasangJadwalBackupArsip',[],null,muatStatusBackupArsip,'Memasang jadwal...')"><i class="bi bi-calendar-check"></i> Pasang jadwal otomatis</button>` : ''}
+        ${!(d.jadwalBackup && d.jadwalArsip && d.versiJadwal === 'bulanan-tgl3') ? `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('pasangJadwalBackupArsip',[],null,muatStatusBackupArsip,'Memasang jadwal...')"><i class="bi bi-calendar-check"></i> Pasang jadwal otomatis</button>` : ''}
         <button class="btn btn-outline-ip btn-sm-ip" onclick="callServer('jalankanBackupSekarang',[],null,muatStatusBackupArsip,'Membuat backup...')"><i class="bi bi-cloud-arrow-up"></i> Backup sekarang</button>
         <button class="btn btn-outline-ip btn-sm-ip" onclick="pratinjauArsipAdmin()"><i class="bi bi-search"></i> Pratinjau arsip</button>
       </div>`;
@@ -5237,6 +5232,9 @@ function ipgFotoCetak(url) {
 // ════════════════════════════════════════════════════════
 const IPG_DF = {};
 const IPG_DF_LAIN = {}; // jumlah data tanggal lain yang masih diproses (dihitung server saat data dimuat per periode)
+const IPG_DF_ARSIP = {}; // true bila data yang tampil diambil dari file arsip (bulan lalu ke belakang)
+const ipgBlnDinas = (r, t) => ipgDinasOf(r).slice(0, 7) === t;
+const ipgBlnTgl = k => (r, t) => String(r[k] || '').slice(0, 7) === t;
 /** Ambil data satu periode dari server (bukan seluruh sheet). tanggal '' = semua tanggal. */
 function ipgMuatPeriode(sheetName, tanggal, opsi, onOk) {
   google.script.run.withSuccessHandler(res => {
@@ -5246,44 +5244,55 @@ function ipgMuatPeriode(sheetName, tanggal, opsi, onOk) {
 }
 const IPG_DF_CFG = {
   // def: tanggal bawaan · cocok: apakah baris milik tanggal t · proses: masih perlu tindakan · render: gambar ulang tabel
-  ba:        { label: 'Tanggal dinas', def: () => ipgTanggalDinas(ipgShiftNow()), cocok: (r, t) => ipgDinasOf(r) === t, proses: r => r.StatusApproval !== 'Selesai', render: () => renderMutasiJagaTable(), muat: () => muatTabelMutasiJaga() },
-  cs:        { label: 'Tanggal dinas', def: () => ipgTanggalDinas(ipgShiftNow()), cocok: (r, t) => ipgDinasOf(r) === t, proses: r => r.StatusApproval !== 'Selesai', render: () => renderChecklistTable(), muat: () => muatTabelChecklist() },
-  rekap:     { label: 'Tanggal dinas', def: () => ipgTanggalDinas(ipgShiftNow()), cocok: (r, t) => ipgDinasOf(r) === t, proses: r => r.StatusApproval !== 'Selesai', render: () => renderRekapPatroliTable(), muat: () => muatTabelRekapPatroli() },
-  tamu:      { label: 'Tanggal kunjungan', def: () => ipgToday(), cocok: (r, t) => String(r.Tanggal || '').slice(0, 10) === t, proses: r => r.StatusApproval === 'Diajukan' || r.StatusKunjungan === 'Di Area', render: () => renderIzinTamuTable() },
+  ba:        { label: 'Tanggal dinas', def: () => ipgTanggalDinas(ipgShiftNow()), cocok: (r, t) => ipgDinasOf(r) === t, bulan: ipgBlnDinas, proses: r => r.StatusApproval !== 'Selesai', render: () => renderMutasiJagaTable(), muat: () => muatTabelMutasiJaga() },
+  cs:        { label: 'Tanggal dinas', def: () => ipgTanggalDinas(ipgShiftNow()), cocok: (r, t) => ipgDinasOf(r) === t, bulan: ipgBlnDinas, proses: r => r.StatusApproval !== 'Selesai', render: () => renderChecklistTable(), muat: () => muatTabelChecklist() },
+  rekap:     { label: 'Tanggal dinas', def: () => ipgTanggalDinas(ipgShiftNow()), cocok: (r, t) => ipgDinasOf(r) === t, bulan: ipgBlnDinas, proses: r => r.StatusApproval !== 'Selesai', render: () => renderRekapPatroliTable(), muat: () => muatTabelRekapPatroli() },
+  tamu:      { label: 'Tanggal kunjungan', def: () => ipgToday(), cocok: (r, t) => String(r.Tanggal || '').slice(0, 10) === t, bulan: ipgBlnTgl('Tanggal'), proses: r => r.StatusApproval === 'Diajukan' || r.StatusKunjungan === 'Di Area', render: () => renderIzinTamuTable() },
   kendaraan: { label: 'Tanggal berlaku', def: () => ipgToday(),
                cocok: (r, t) => { const a = String(r.TanggalMulai || '').slice(0, 10), b = String(r.TanggalSelesai || r.TanggalMulai || '').slice(0, 10); return a && a <= t && t <= (b || a); },
+               bulan: (r, t) => { const a = String(r.TanggalMulai || '').slice(0, 7), b = String(r.TanggalSelesai || r.TanggalMulai || '').slice(0, 7); return a && a <= t && t <= (b || a); },
                proses: r => r.StatusApproval === 'Diajukan' || r.StatusKunjungan === 'Di Area', render: () => renderKendaraanTable() },
-  bk:        { label: 'Tanggal', def: () => ipgToday(), cocok: (r, t) => String(r.Tanggal || '').slice(0, 10) === t, proses: r => !['Selesai', 'Ditolak'].includes(r.Status), render: () => renderBarangKeluarTable() },
-  inc:       { label: 'Tanggal kejadian', def: () => ipgToday(), cocok: (r, t) => String(r.TanggalJam || '').slice(0, 10) === t, proses: r => r.Status !== 'Selesai', render: () => renderIncidentTable() }
+  bk:        { label: 'Tanggal', def: () => ipgToday(), cocok: (r, t) => String(r.Tanggal || '').slice(0, 10) === t, bulan: ipgBlnTgl('Tanggal'), proses: r => !['Selesai', 'Ditolak'].includes(r.Status), render: () => renderBarangKeluarTable() },
+  inc:       { label: 'Tanggal kejadian', def: () => ipgToday(), cocok: (r, t) => String(r.TanggalJam || '').slice(0, 10) === t, bulan: ipgBlnTgl('TanggalJam'), proses: r => r.Status !== 'Selesai', render: () => renderIncidentTable() },
+  jurnal:    { label: 'Tanggal dinas', def: () => ipgTanggalDinas(ipgShiftNow()), cocok: (r, t) => ipgDinasOf(r) === t, bulan: ipgBlnDinas, proses: () => false, render: () => renderJurnalListTable(), muat: () => loadJurnalList() },
+  logp:      { label: 'Tanggal dinas', def: () => ipgTanggalDinas(ipgShiftNow()), cocok: (r, t) => ipgDinasOf(r) === t, bulan: ipgBlnDinas, proses: () => false, render: () => renderLogPatroliTable(), muat: () => loadLogPatroliList() }
 };
 /** Tanggal bawaan dipasang saat modul dibuka dari menu; muat ulang setelah simpan/approve tetap di tanggal yang dipilih */
 function ipgDfReset(key) { if (!(key in IPG_DF)) IPG_DF[key] = IPG_DF_CFG[key].def(); }
 function ipgDfBar(key) {
   const cfg = IPG_DF_CFG[key], t = IPG_DF[key] || '';
+  const bulanIni = ipgToday().slice(0, 7);
   return `<div class="ipg-df mb-2" id="dfbar_${key}">
     <label class="small text-muted mb-0" for="df_${key}">${cfg.label}</label>
-    <input type="date" class="form-control form-control-sm" style="width:auto;" id="df_${key}" value="${t}" onchange="ipgDfSet('${key}', this.value)">
-    <button type="button" class="btn btn-outline-ip btn-sm-ip" onclick="ipgDfSet('${key}', IPG_DF_CFG['${key}'].def())">Hari ini</button>
-    <button type="button" class="btn btn-sm-ip ${t ? 'btn-outline-ip' : 'btn-primary-ip'}" id="dfall_${key}" onclick="ipgDfSet('${key}', '')">Semua tanggal</button>
+    <input type="date" class="form-control form-control-sm" style="width:auto;" id="df_${key}" value="${t.length === 10 ? t : ''}" max="${ipgToday()}" onchange="ipgDfSet('${key}', this.value || IPG_DF_CFG['${key}'].def())" title="Tanggal bulan lalu ke belakang diambil dari arsip">
+    <button type="button" class="btn btn-sm-ip ${t.length === 10 && t === cfg.def() ? 'btn-primary-ip' : 'btn-outline-ip'}" id="dfhari_${key}" onclick="ipgDfSet('${key}', IPG_DF_CFG['${key}'].def())">Hari ini</button>
+    <button type="button" class="btn btn-sm-ip ${t === bulanIni ? 'btn-primary-ip' : 'btn-outline-ip'}" id="dfbln_${key}" onclick="ipgDfSet('${key}', ipgToday().slice(0, 7))">Bulan ini</button>
     <div class="w-100 small" id="dfinfo_${key}"></div>
   </div>`;
 }
 function ipgDfSet(key, v) {
   IPG_DF[key] = v || '';
-  const inp = document.getElementById('df_' + key), btn = document.getElementById('dfall_' + key);
-  if (inp) inp.value = IPG_DF[key];
-  if (btn) { btn.classList.toggle('btn-primary-ip', !IPG_DF[key]); btn.classList.toggle('btn-outline-ip', !!IPG_DF[key]); }
-  if (IPG_DF_CFG[key].muat) IPG_DF_CFG[key].muat(); // data per periode → ambil ulang dari server
-  else IPG_DF_CFG[key].render();
+  const t = IPG_DF[key], cfg = IPG_DF_CFG[key];
+  const inp = document.getElementById('df_' + key);
+  if (inp) inp.value = t.length === 10 ? t : '';
+  const tandai = (id, on) => { const b = document.getElementById(id); if (b) { b.classList.toggle('btn-primary-ip', on); b.classList.toggle('btn-outline-ip', !on); } };
+  tandai('dfhari_' + key, t.length === 10 && t === cfg.def());
+  tandai('dfbln_' + key, t === ipgToday().slice(0, 7));
+  if (cfg.muat) cfg.muat(); // data per periode → ambil ulang dari server
+  else cfg.render();
 }
 /** Saring baris sesuai tanggal terpilih + tulis pengingat data yang masih diproses di tanggal lain */
 function ipgDfApply(key, rows) {
   const cfg = IPG_DF_CFG[key], t = IPG_DF[key] || '';
   const info = document.getElementById('dfinfo_' + key);
+  const arsip = IPG_DF_ARSIP[key] ? ' <span class="pill pill-neutral"><i class="bi bi-archive"></i> dari arsip</span>' : '';
   if (!t) { if (info) info.innerHTML = `<span class="text-muted">Menampilkan semua tanggal (${rows.length} data).</span>`; return { rows: rows.slice() }; }
-  const hasil = rows.filter(r => cfg.cocok(r, t));
-  const jmlLain = (cfg.muat && typeof IPG_DF_LAIN[key] === 'number') ? IPG_DF_LAIN[key] : rows.filter(r => !cfg.cocok(r, t) && cfg.proses(r)).length;
-  if (info) info.innerHTML = `<span class="text-muted">${hasil.length} data pada ${ipgTglPendek(t)}.</span>`
+  const bulan = t.length === 7;
+  const cocok = r => bulan ? (cfg.bulan ? cfg.bulan(r, t) : String(r.Tanggal || '').slice(0, 7) === t) : cfg.cocok(r, t);
+  const hasil = rows.filter(cocok);
+  const jmlLain = (cfg.muat && typeof IPG_DF_LAIN[key] === 'number') ? IPG_DF_LAIN[key] : rows.filter(r => !cocok(r) && cfg.proses(r)).length;
+  const label = bulan ? IPG_BULAN_PANJANG[Number(t.slice(5, 7)) - 1] + ' ' + t.slice(0, 4) : ipgTglPendek(t);
+  if (info) info.innerHTML = `<span class="text-muted">${hasil.length} data pada ${label}.</span>${arsip}`
     + (jmlLain ? ` <span class="ipg-df-warn"><i class="bi bi-hourglass-split"></i> ${jmlLain} data dari tanggal lain masih diproses</span> `
        + `<span class="pill pill-info" style="cursor:pointer;" onclick="ipgDfSet('${key}','')"><i class="bi bi-eye"></i> Lihat Semua</span>` : '');
   return { rows: hasil };
