@@ -646,7 +646,7 @@ const SECTION_TITLES = {
 };
 
 function navigateTo(sectionId, fromHistory) {
-  if (typeof IPG_DF !== 'undefined') Object.keys(IPG_DF).forEach(k => delete IPG_DF[k]); // pindah menu → filter tanggal kembali ke hari ini
+  if (typeof IPG_DF !== 'undefined') { Object.keys(IPG_DF).forEach(k => delete IPG_DF[k]); Object.keys(IPG_SHIFT).forEach(k => delete IPG_SHIFT[k]); } // pindah menu → filter tanggal kembali ke hari ini
   document.querySelectorAll('.sidebar-nav .nav-link').forEach(l => l.classList.toggle('active', l.dataset.section === sectionId));
   closeSidebar();
   const loaders = {
@@ -1398,7 +1398,7 @@ function selectOptions(list, selected) {
 
 function loadJurnalList() {
   ipgDfReset('jurnal');
-  ipgMuatPeriode('JURNAL_POS', IPG_DF.jurnal, {}, d => {
+  ipgMuatPeriode('JURNAL_POS', IPG_DF.jurnal, ipgDfFilterShift('jurnal'), d => {
     jurnalListAllData = d.rows || [];
     IPG_DF_ARSIP.jurnal = !!d.dariArsip;
     renderJurnalListTable();
@@ -2092,7 +2092,7 @@ function renderPutaranCard(p) {
 let logPatroliAllData = [];
 function loadLogPatroliList() {
   ipgDfReset('logp');
-  ipgMuatPeriode('LOG_PATROLI', IPG_DF.logp, {}, d => {
+  ipgMuatPeriode('LOG_PATROLI', IPG_DF.logp, ipgDfFilterShift('logp'), d => {
     logPatroliAllData = d.rows || [];
     IPG_DF_ARSIP.logp = !!d.dariArsip;
     renderLogPatroliTable();
@@ -5232,7 +5232,8 @@ function ipgFotoCetak(url) {
 // ════════════════════════════════════════════════════════
 const IPG_DF = {};
 const IPG_DF_LAIN = {}; // jumlah data tanggal lain yang masih diproses (dihitung server saat data dimuat per periode)
-const IPG_DF_ARSIP = {}; // true bila data yang tampil diambil dari file arsip (bulan lalu ke belakang)
+const IPG_DF_ARSIP = {};
+const IPG_SHIFT = {}; // filter shift (Jurnal Pos & Log Patroli): bawaan = shift berjalan, '' = semua shift // true bila data yang tampil diambil dari file arsip (bulan lalu ke belakang)
 const ipgBlnDinas = (r, t) => ipgDinasOf(r).slice(0, 7) === t;
 const ipgBlnTgl = k => (r, t) => String(r[k] || '').slice(0, 7) === t;
 /** Ambil data satu periode dari server (bukan seluruh sheet). tanggal '' = semua tanggal. */
@@ -5254,15 +5255,24 @@ const IPG_DF_CFG = {
                proses: r => r.StatusApproval === 'Diajukan' || r.StatusKunjungan === 'Di Area', render: () => renderKendaraanTable() },
   bk:        { label: 'Tanggal', def: () => ipgToday(), cocok: (r, t) => String(r.Tanggal || '').slice(0, 10) === t, bulan: ipgBlnTgl('Tanggal'), proses: r => !['Selesai', 'Ditolak'].includes(r.Status), render: () => renderBarangKeluarTable() },
   inc:       { label: 'Tanggal kejadian', def: () => ipgToday(), cocok: (r, t) => String(r.TanggalJam || '').slice(0, 10) === t, bulan: ipgBlnTgl('TanggalJam'), proses: r => r.Status !== 'Selesai', render: () => renderIncidentTable() },
-  jurnal:    { label: 'Tanggal dinas', def: () => ipgTanggalDinas(ipgShiftNow()), cocok: (r, t) => ipgDinasOf(r) === t, bulan: ipgBlnDinas, proses: () => false, render: () => renderJurnalListTable(), muat: () => loadJurnalList() },
-  logp:      { label: 'Tanggal dinas', def: () => ipgTanggalDinas(ipgShiftNow()), cocok: (r, t) => ipgDinasOf(r) === t, bulan: ipgBlnDinas, proses: () => false, render: () => renderLogPatroliTable(), muat: () => loadLogPatroliList() }
+  jurnal:    { label: 'Tanggal dinas', def: () => ipgTanggalDinas(ipgShiftNow()), cocok: (r, t) => ipgDinasOf(r) === t, bulan: ipgBlnDinas, proses: () => false, shift: true, render: () => renderJurnalListTable(), muat: () => loadJurnalList() },
+  logp:      { label: 'Tanggal dinas', def: () => ipgTanggalDinas(ipgShiftNow()), cocok: (r, t) => ipgDinasOf(r) === t, bulan: ipgBlnDinas, proses: () => false, shift: true, render: () => renderLogPatroliTable(), muat: () => loadLogPatroliList() }
 };
 /** Tanggal bawaan dipasang saat modul dibuka dari menu; muat ulang setelah simpan/approve tetap di tanggal yang dipilih */
-function ipgDfReset(key) { if (!(key in IPG_DF)) IPG_DF[key] = IPG_DF_CFG[key].def(); }
+function ipgDfReset(key) {
+  if (!(key in IPG_DF)) IPG_DF[key] = IPG_DF_CFG[key].def();
+  if (IPG_DF_CFG[key].shift && !(key in IPG_SHIFT)) IPG_SHIFT[key] = ipgShiftNow(); // bawaan: shift berjalan saja
+}
+function ipgDfSetShift(key, v) { IPG_SHIFT[key] = v; IPG_DF_CFG[key].muat(); }
+/** Filter server untuk tabel dengan pilihan shift */
+function ipgDfFilterShift(key) { return IPG_SHIFT[key] ? { filter: { Shift: IPG_SHIFT[key] } } : {}; }
 function ipgDfBar(key) {
   const cfg = IPG_DF_CFG[key], t = IPG_DF[key] || '';
   const bulanIni = ipgToday().slice(0, 7);
   return `<div class="ipg-df mb-2" id="dfbar_${key}">
+    ${cfg.shift ? `<select class="form-select form-select-sm" style="width:auto;" id="dfshift_${key}" onchange="ipgDfSetShift('${key}', this.value)" aria-label="Shift">
+      ${['', ...OPT_SHIFT].map(sh => `<option value="${sh}" ${(IPG_SHIFT[key] || '') === sh ? 'selected' : ''}>${sh ? 'Shift ' + sh + (sh === ipgShiftNow() ? ' (berjalan)' : '') : 'Semua shift'}</option>`).join('')}
+    </select>` : ''}
     <label class="small text-muted mb-0" for="df_${key}">${cfg.label}</label>
     <input type="date" class="form-control form-control-sm" style="width:auto;" id="df_${key}" value="${t.length === 10 ? t : ''}" max="${ipgToday()}" onchange="ipgDfSet('${key}', this.value || IPG_DF_CFG['${key}'].def())" title="Tanggal bulan lalu ke belakang diambil dari arsip">
     <button type="button" class="btn btn-sm-ip ${t.length === 10 && t === cfg.def() ? 'btn-primary-ip' : 'btn-outline-ip'}" id="dfhari_${key}" onclick="ipgDfSet('${key}', IPG_DF_CFG['${key}'].def())">Hari ini</button>
@@ -5292,7 +5302,8 @@ function ipgDfApply(key, rows) {
   const hasil = rows.filter(cocok);
   const jmlLain = (cfg.muat && typeof IPG_DF_LAIN[key] === 'number') ? IPG_DF_LAIN[key] : rows.filter(r => !cocok(r) && cfg.proses(r)).length;
   const label = bulan ? IPG_BULAN_PANJANG[Number(t.slice(5, 7)) - 1] + ' ' + t.slice(0, 4) : ipgTglPendek(t);
-  if (info) info.innerHTML = `<span class="text-muted">${hasil.length} data pada ${label}.</span>${arsip}`
+  const shiftLbl = cfg.shift && IPG_SHIFT[key] ? ' · shift ' + IPG_SHIFT[key] : '';
+  if (info) info.innerHTML = `<span class="text-muted">${hasil.length} data pada ${label}${shiftLbl}.</span>${arsip}`
     + (jmlLain ? ` <span class="ipg-df-warn"><i class="bi bi-hourglass-split"></i> ${jmlLain} data dari tanggal lain masih diproses</span> `
        + `<span class="pill pill-info" style="cursor:pointer;" onclick="ipgDfSet('${key}','')"><i class="bi bi-eye"></i> Lihat Semua</span>` : '');
   return { rows: hasil };
