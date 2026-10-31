@@ -5591,24 +5591,26 @@ function kepFormLangkah(arah) {
 
 // ── Pakta Integritas SMAP ──
 function kepNaskahPakta(p, tahun) {
+  const li = (id, sub) => `<li style="margin-bottom:4px;">${id}${sub || ''}</li>`;
   const baris = (l, v) => `<tr><td style="width:120px;padding:2px 0;">${l}</td><td style="padding:2px 6px;">:</td><td style="padding:2px 0;"><b>${escHtmlIpg(v || '-')}</b></td></tr>`;
-  return `<div style="text-align:center;font-weight:700;line-height:1.5;margin-bottom:12px;">SATPAM PT PLN INDONESIA POWER UBP GRATI<br>TAHUN ${tahun}</div>
+  return `<div style="text-align:center;font-weight:700;line-height:1.4;margin-bottom:8px;">SATPAM PT PLN INDONESIA POWER UBP GRATI<br>TAHUN ${tahun}</div>
     <p style="margin:0 0 6px;">Saya yang bertanda tangan di bawah ini:</p>
-    <table style="border-collapse:collapse;margin-bottom:10px;">${baris('Nama', p.Nama)}${baris('Nomor Induk', p.NRP)}${baris('Regu', p.Regu)}</table>
-    <p style="margin:0 0 6px;">Dengan penuh kesadaran dan tanggung jawab, menyatakan komitmen untuk:</p>
-    <ol style="margin:0 0 10px;padding-left:20px;line-height:1.55;">
-      <li>Menjunjung tinggi integritas, kejujuran, dan profesionalisme dalam menjalankan tugas pengamanan sesuai peraturan dan prosedur perusahaan.</li>
-      <li>Tidak menyalahgunakan kewenangan, jabatan, maupun fasilitas keamanan untuk kepentingan pribadi atau pihak lain.</li>
-      <li>Menerapkan prinsip 4 NO's, yaitu:
-        <ul style="margin:2px 0;padding-left:18px;">
-          <li><b>No Bribery:</b> Tidak menerima atau memberikan suap.</li>
-          <li><b>No Kickback:</b> Tidak menerima komisi atau imbalan tidak sah.</li>
-          <li><b>No Gift:</b> Tidak menerima hadiah atau gratifikasi yang bertentangan dengan ketentuan perusahaan.</li>
-          <li><b>No Luxurious Hospitality:</b> Tidak menerima jamuan atau fasilitas berlebihan yang berpotensi menimbulkan konflik kepentingan.</li>
-        </ul></li>
-      <li>Menolak segala bentuk penyuapan, pungutan liar, dan gratifikasi, termasuk imbalan untuk mempermudah akses orang, kendaraan, maupun barang di lingkungan perusahaan.</li>
-      <li>Menghindari konflik kepentingan serta melaporkan setiap indikasi pelanggaran melalui mekanisme pelaporan resmi perusahaan.</li>
-      <li>Bersedia menerima sanksi sesuai ketentuan yang berlaku apabila terbukti melanggar pakta integritas ini.</li>
+    <table style="border-collapse:collapse;margin-bottom:6px;font-size:inherit;">${baris('Nama', p.Nama)}${baris('Nomor Induk', p.NRP)}${baris('Regu', p.Regu)}</table>
+    <p style="margin:0 0 6px;">Dalam mendukung suksesnya <b>"PLN Indonesia Power Berintegritas"</b> untuk mencapai <i>Security Management Excellence</i>, dengan ini saya berkomitmen untuk:</p>
+    <ol style="margin:6px 0 10px;padding-left:20px;">
+      ${li('Melaksanakan tugas pengamanan sesuai peraturan, SOP, dan proses legal formal yang berlaku, menerapkan <i>Good Corporate Governance</i>, serta menjunjung tinggi integritas, kejujuran, dan profesionalisme.')}
+      ${li('Tidak menyalahgunakan kewenangan, jabatan, maupun fasilitas keamanan untuk kepentingan pribadi atau pihak lain.')}
+      ${li('Mendukung Prinsip 4 NO&#39;s PT PLN Indonesia Power dalam setiap tugas pengamanan, termasuk pemeriksaan akses orang, kendaraan, dan barang, yaitu:',
+           `<ol type="a" style="margin:2px 0;padding-left:18px;">
+              <li><b>No Bribery</b> (tidak boleh ada suap-menyuap dan pemerasan);</li>
+              <li><b>No Kickback</b> (tidak boleh ada komisi, tanda terima kasih baik dalam bentuk uang maupun bentuk lainnya);</li>
+              <li><b>No Gift</b> (tidak boleh ada hadiah atau gratifikasi yang bertentangan dengan peraturan dan ketentuan yang berlaku);</li>
+              <li><b>No Luxurious Hospitality</b> (tidak boleh ada penyambutan dan jamuan yang berlebihan).</li>
+            </ol>`)}
+      ${li('Menolak segala bentuk penyuapan, pungutan liar, dan gratifikasi, termasuk imbalan untuk mempermudah akses orang, kendaraan, maupun barang di lingkungan perusahaan.')}
+      ${li('Mendukung implementasi Sistem Manajemen Anti Penyuapan (SMAP) dan Sistem Manajemen Kepatuhan (SMK) di PT PLN Indonesia Power, menghindari konflik kepentingan, serta melaporkan setiap indikasi pelanggaran melalui mekanisme pelaporan resmi perusahaan.')}
+      ${li('Mendukung implementasi Sistem Manajemen Pengamanan di lingkungan PT PLN Indonesia Power, serta menjalankannya sesuai kebijakan yang berlaku dengan penuh tanggung jawab dan integritas.')}
+      ${li('Bersedia menerima sanksi sesuai ketentuan yang berlaku apabila terbukti melanggar Pakta Integritas ini.')}
     </ol>
     <p style="margin:0;">Demikian Pakta Integritas ini saya buat dengan penuh kesadaran dan tanpa paksaan dari pihak mana pun.</p>`;
 }
@@ -5633,7 +5635,7 @@ function cetakPaktaKep(p) {
   if (!p) return;
   const tahun = String(p.Tahun || '').slice(0, 4), tgl = String(p.WaktuTandaTangan || '').slice(0, 10);
   const body = buildLetterheadHTML('paktaIntegritas', '')
-    + `<div style="font-size:12px;">${kepNaskahPakta(p, tahun)}</div>
+    + `<div style="font-size:12px;line-height:1.5;">${kepNaskahPakta(p, tahun)}</div>
       <div style="text-align:center;font-size:12px;margin-top:14px;">Pasuruan, ${kepTglPanjang(tgl)}</div>`
     + buildApprovalTable([{ label: 'Yang Membuat Pernyataan,', name: p.Nama }], `Pakta Integritas SMAP ${tahun} — ${p.Nama} (${p.NRP || '-'})`,
         `<div style="text-align:center;font-size:10px;color:#666;margin-top:4px;">Ditandatangani digital ${kepWaktu(p.WaktuTandaTangan)}</div>`);
