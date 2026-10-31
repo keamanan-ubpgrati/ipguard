@@ -853,7 +853,7 @@ function openStatusKeamananDrilldown() {
 function loadDashboard() {
   const c = document.getElementById('app-container');
   c.innerHTML = `<div class="text-center py-5"><div class="spinner-border" style="color:#0C7A94"></div></div>`;
-  google.script.run.withSuccessHandler(res => { renderDashboard(res); kepBannerDashboard(); }).withFailureHandler(e=>showToast('Error',e.message,'danger')).getDashboardData();
+  google.script.run.withSuccessHandler(res => { renderDashboard(res); pengBannerDashboard(); kepBannerDashboard(); }).withFailureHandler(e=>showToast('Error',e.message,'danger')).getDashboardData();
 }
 let dashboardJurnalPosHariIni = [];
 const SHIFT_AKTIF_ICON = { Pagi: 'bi-sun-fill', Sore: 'bi-cloud-sun-fill', Malam: 'bi-moon-stars-fill' };
@@ -4474,6 +4474,8 @@ function gantiKodeQrTitik(id) {
 function loadAdministrasi() {
   const c = document.getElementById('app-container');
   c.innerHTML = sectionHeader('Administrasi Akun & Konfigurasi Sistem', '8 Role, approval registrasi, audit trail — khusus Admin')
+    + `<div class="card-ip mb-3" id="pengAdminCard"><h6 class="mb-2"><i class="bi bi-megaphone"></i> Pengumuman Dashboard</h6>
+         <div class="small text-muted"><span class="spinner-border spinner-border-sm"></span> Memuat...</div></div>`
     + `<div class="card-ip mb-3" id="backupArsipCard"><h6 class="mb-2"><i class="bi bi-archive"></i> Backup & Arsip Data</h6>
          <div class="small text-muted"><span class="spinner-border spinner-border-sm"></span> Memuat status...</div></div>`
     + `<div class="card-ip mb-3">
@@ -4586,6 +4588,7 @@ function loadAdministrasi() {
     );
   }).getAllData('USERS');
   muatStatusBackupArsip();
+  muatPengumumanAdmin();
 }
 
 // ── Backup & Arsip Data (Admin) ──
@@ -5817,8 +5820,151 @@ function kepBannerDashboard() {
     if (!d.paktaTahunIni) pesan.push('Pakta Integritas SMAP ' + d.tahun);
     const c = document.getElementById('app-container');
     if (!pesan.length || !c || document.getElementById('kepBanner')) return;
-    c.insertAdjacentHTML('afterbegin', `<div id="kepBanner" class="alert alert-warning d-flex align-items-center gap-2 flex-wrap" role="alert">
+    const slotKep = dashBannerSlot('kepSlot'); if (!slotKep) return;
+    slotKep.insertAdjacentHTML('afterbegin', `<div id="kepBanner" class="alert alert-warning d-flex align-items-center gap-2 flex-wrap" role="alert">
       <i class="bi bi-shield-exclamation"></i><div class="flex-grow-1">Anda belum mengisi ${pesan.join(' dan ')}.</div>
       <button class="btn btn-primary-ip btn-sm-ip" onclick="navigateTo('kepatuhan')">Isi sekarang</button></div>`);
   }).getKepatuhanSaya();
+}
+
+
+// ════════════════════════════════════════════════════════
+// PENGUMUMAN DASHBOARD — banner dari Admin untuk role tertentu dengan masa tayang.
+// Info & Penting bisa ditutup (diingat di HP/browser itu), Darurat tetap tampil sampai masa tayang habis.
+// ════════════════════════════════════════════════════════
+const PENG_GAYA = {
+  Info:    { bg: '#E3F1FA', border: '#9FD0EA', warna: '#0C7A94', icon: 'bi-info-circle-fill', label: 'Info' },
+  Penting: { bg: '#FFF3CD', border: '#FFD866', warna: '#B07800', icon: 'bi-exclamation-triangle-fill', label: 'Penting' },
+  Darurat: { bg: '#FDE2E1', border: '#F4A3A0', warna: '#D32F2F', icon: 'bi-broadcast-pin', label: 'Darurat' }
+};
+const PENG_TARGET_BAWAAN = ['SATPAM', 'DANRU', 'KASATPAM'];
+let pengAdminRows = [];
+
+/** Wadah banner di atas Dashboard: pengumuman dulu, lalu banner kepatuhan */
+function dashBannerSlot(id) {
+  const c = document.getElementById('app-container');
+  const aktif = document.querySelector('.sidebar-nav .nav-link.active');
+  if (!c || (aktif && aktif.dataset.section !== 'dashboard')) return null; // pengguna sudah pindah menu
+  let w = document.getElementById('dashBanners');
+  if (!w) { c.insertAdjacentHTML('afterbegin', '<div id="dashBanners"><div id="pengSlot"></div><div id="kepSlot"></div></div>'); w = document.getElementById('dashBanners'); }
+  return document.getElementById(id);
+}
+function pengSudahDitutup(id) { try { return localStorage.getItem('ipg_peng_tutup_' + id) === '1'; } catch (e) { return false; } }
+function tutupPengumuman(id) {
+  try { localStorage.setItem('ipg_peng_tutup_' + id, '1'); } catch (e) {}
+  const el = document.getElementById('peng_' + id); if (el) el.remove();
+}
+function pengTglWaktu(s) { s = String(s || ''); return s ? ipgTglPendek(s.slice(0, 10)) + ' ' + s.slice(11, 16) : '-'; }
+function pengBannerHtml(p, pratinjau) {
+  const g = PENG_GAYA[p.Jenis] || PENG_GAYA.Info, bisaTutup = p.Jenis !== 'Darurat' && !pratinjau;
+  const link = p.Tautan && /^https?:\/\//i.test(p.Tautan)
+    ? `<a class="btn btn-sm-ip" style="background:${g.warna};color:#fff;" href="${escHtmlIpg(p.Tautan)}" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right"></i> Buka</a>` : '';
+  return `<div id="peng_${escHtmlIpg(p.ID || 'pratinjau')}" role="alert" class="d-flex align-items-start gap-2 mb-3"
+      style="background:${g.bg};border:1px solid ${g.border};border-left:5px solid ${g.warna};border-radius:var(--radius-md);padding:.75rem .9rem;">
+      <i class="bi ${g.icon}" style="color:${g.warna};font-size:1.25rem;line-height:1.2;"></i>
+      <div class="flex-grow-1" style="min-width:0;">
+        <div class="d-flex align-items-center gap-2 flex-wrap"><span class="pill" style="background:${g.warna};color:#fff;">${g.label}</span>
+          <b>${escHtmlIpg(p.Judul || 'Judul pengumuman')}</b></div>
+        <div class="small mt-1" style="white-space:pre-line;">${escHtmlIpg(p.Isi || 'Isi pengumuman')}</div>
+        <div class="d-flex align-items-center gap-2 mt-2 flex-wrap">${link}
+          ${p.Selesai ? `<span class="small text-muted">Berlaku s.d. ${pengTglWaktu(p.Selesai)}</span>` : ''}</div>
+      </div>
+      ${bisaTutup ? `<button type="button" class="btn-close" aria-label="Tutup" onclick="tutupPengumuman('${escHtmlIpg(p.ID)}')"></button>` : ''}
+    </div>`;
+}
+function pengBannerDashboard() {
+  google.script.run.withSuccessHandler(res => {
+    if (!res || !res.success) return;
+    const list = (res.data || []).filter(p => p.Jenis === 'Darurat' || !pengSudahDitutup(p.ID));
+    if (!list.length) return;
+    const slot = dashBannerSlot('pengSlot');
+    if (slot) slot.innerHTML = list.map(p => pengBannerHtml(p)).join('');
+  }).getPengumumanAktif();
+}
+
+// ── Admin: kelola pengumuman ──
+function muatPengumumanAdmin() {
+  google.script.run.withSuccessHandler(res => {
+    const el = document.getElementById('pengAdminCard');
+    if (!el) return;
+    if (!res.success) { el.innerHTML = `<h6 class="mb-2"><i class="bi bi-megaphone"></i> Pengumuman Dashboard</h6><div class="small text-danger">${res.message}</div>`; return; }
+    pengAdminRows = res.data || [];
+    renderPengumumanAdmin();
+  }).getPengumumanAdmin();
+}
+function renderPengumumanAdmin() {
+  const el = document.getElementById('pengAdminCard');
+  if (!el) return;
+  const pillStatus = { Tayang: 'pill-success', Terjadwal: 'pill-warning', Selesai: 'pill-neutral', Nonaktif: 'pill-danger' };
+  const target = t => String(t || '').split(',').filter(Boolean).map(r => ROLE_LABEL[r] || r).join(', ');
+  el.innerHTML = `<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+      <h6 class="mb-0"><i class="bi bi-megaphone"></i> Pengumuman Dashboard</h6>
+      <button class="btn btn-primary-ip btn-sm-ip" onclick="formPengumuman()"><i class="bi bi-plus-lg"></i> Buat pengumuman</button></div>
+    <p class="section-sub mb-2">Banner di Dashboard untuk role yang dipilih, tampil otomatis sesuai masa tayang. Info &amp; Penting bisa ditutup petugas; Darurat tetap tampil sampai masa tayang habis.</p>
+    ${pengAdminRows.length ? `<div class="table-responsive-ip"><table class="table-ip">
+      <thead><tr><th>Judul</th><th>Jenis</th><th>Masa tayang</th><th>Untuk</th><th>Status</th><th>Aksi</th></tr></thead>
+      <tbody>${pengAdminRows.map((r, i) => `<tr>
+        <td><b>${escHtmlIpg(r.Judul)}</b><div class="small text-muted text-truncate" style="max-width:260px;">${escHtmlIpg(r.Isi)}</div></td>
+        <td><span class="pill" style="background:${(PENG_GAYA[r.Jenis] || PENG_GAYA.Info).warna};color:#fff;">${escHtmlIpg(r.Jenis)}</span></td>
+        <td class="small" style="white-space:nowrap;">${pengTglWaktu(r.Mulai)}<br>s.d. ${pengTglWaktu(r.Selesai)}</td>
+        <td class="small">${escHtmlIpg(target(r.Target))}</td>
+        <td><span class="pill ${pillStatus[r.statusTayang] || 'pill-neutral'}">${r.statusTayang}</span></td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-outline-ip btn-sm-ip" title="Ubah" onclick="formPengumuman(${i})"><i class="bi bi-pencil"></i></button>
+          <button class="btn btn-outline-ip btn-sm-ip" title="${r.Status === 'Aktif' ? 'Nonaktifkan' : 'Aktifkan'}" onclick="callServer('setStatusPengumuman',['${r.ID}','${r.Status === 'Aktif' ? 'Nonaktif' : 'Aktif'}'],null,muatPengumumanAdmin,'Menyimpan...')"><i class="bi ${r.Status === 'Aktif' ? 'bi-pause-circle' : 'bi-play-circle'}"></i></button>
+          <button class="btn btn-outline-ip btn-sm-ip" title="Hapus" onclick="openConfirmModal('Hapus pengumuman ini?', () => callServer('hapusPengumuman',['${r.ID}'],null,muatPengumumanAdmin,'Menghapus...'))"><i class="bi bi-trash"></i></button>
+        </td></tr>`).join('')}</tbody></table></div>` : '<div class="small text-muted">Belum ada pengumuman.</div>'}`;
+}
+function pengKeInputWaktu(s) { s = String(s || ''); return s ? s.slice(0, 10) + 'T' + s.slice(11, 16) : ''; }
+function formPengumuman(i) {
+  const r = i !== undefined ? pengAdminRows[i] : null;
+  const kini = new Date(), pad = n => String(n).padStart(2, '0');
+  const fmt = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const besok = new Date(kini.getTime() + 7 * 864e5);
+  const target = r ? String(r.Target || '').split(',') : PENG_TARGET_BAWAAN;
+  openFormModal(r ? 'Ubah Pengumuman' : 'Buat Pengumuman', `
+    <input type="hidden" id="pgId" value="${r ? escHtmlIpg(r.ID) : ''}">
+    <div class="row g-2">
+      <div class="col-12"><label class="form-label">Judul <span class="text-danger">*</span></label>
+        <input type="text" class="form-control" id="pgJudul" maxlength="80" value="${r ? escHtmlIpg(r.Judul) : ''}" placeholder="Contoh: Apel Gabungan Senin" oninput="pratinjauPengumuman()"></div>
+      <div class="col-12"><label class="form-label">Isi pengumuman <span class="text-danger">*</span></label>
+        <textarea class="form-control" id="pgIsi" rows="3" maxlength="400" placeholder="Tulis singkat, 2–3 kalimat" oninput="pratinjauPengumuman()">${r ? escHtmlIpg(r.Isi) : ''}</textarea></div>
+      <div class="col-md-4"><label class="form-label">Jenis</label>
+        <select class="form-select" id="pgJenis" onchange="pratinjauPengumuman()">${['Info', 'Penting', 'Darurat'].map(j => `<option ${(r ? r.Jenis : 'Info') === j ? 'selected' : ''}>${j}</option>`).join('')}</select></div>
+      <div class="col-md-4"><label class="form-label">Mulai tayang <span class="text-danger">*</span></label>
+        <input type="datetime-local" class="form-control" id="pgMulai" value="${r ? pengKeInputWaktu(r.Mulai) : fmt(kini)}" onchange="pratinjauPengumuman()"></div>
+      <div class="col-md-4"><label class="form-label">Selesai tayang <span class="text-danger">*</span></label>
+        <input type="datetime-local" class="form-control" id="pgSelesai" value="${r ? pengKeInputWaktu(r.Selesai) : fmt(besok)}" onchange="pratinjauPengumuman()"></div>
+      <div class="col-12"><label class="form-label">Ditujukan ke <span class="text-danger">*</span></label>
+        <div class="d-flex flex-wrap gap-3">${Object.keys(ROLE_LABEL).map(k => `<div class="form-check"><input class="form-check-input pg-target" type="checkbox" value="${k}" id="pgT_${k}" ${target.includes(k) ? 'checked' : ''}>
+          <label class="form-check-label small" for="pgT_${k}">${ROLE_LABEL[k]}</label></div>`).join('')}</div></div>
+      <div class="col-md-8"><label class="form-label">Tautan (opsional)</label>
+        <input type="url" class="form-control" id="pgTautan" value="${r ? escHtmlIpg(r.Tautan || '') : ''}" placeholder="https://..." oninput="pratinjauPengumuman()"></div>
+      <div class="col-md-4"><label class="form-label">Status</label>
+        <select class="form-select" id="pgStatus">${['Aktif', 'Nonaktif'].map(s => `<option ${(r ? r.Status : 'Aktif') === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
+      <div class="col-12"><label class="form-label small text-muted mb-1">Pratinjau di Dashboard</label><div id="pgPratinjau"></div></div>
+    </div>
+    <div class="small text-danger" id="pgErr"></div>
+    <div class="d-flex justify-content-end gap-2 mt-3">
+      <button class="btn btn-outline-ip" onclick="closeFormModal()">Batal</button>
+      <button class="btn btn-primary-ip" onclick="simpanPengumumanForm()"><i class="bi bi-check2"></i> Simpan</button></div>`);
+  pratinjauPengumuman();
+}
+function pengDataForm() {
+  return { ID: val('pgId'), Judul: val('pgJudul').trim(), Isi: val('pgIsi').trim(), Jenis: val('pgJenis'),
+    Mulai: val('pgMulai').replace('T', ' '), Selesai: val('pgSelesai').replace('T', ' '), Tautan: val('pgTautan').trim(), Status: val('pgStatus'),
+    Target: Array.from(document.querySelectorAll('.pg-target:checked')).map(x => x.value) };
+}
+function pratinjauPengumuman() {
+  const el = document.getElementById('pgPratinjau');
+  if (el) el.innerHTML = pengBannerHtml(pengDataForm(), true);
+}
+function simpanPengumumanForm() {
+  const d = pengDataForm(), err = document.getElementById('pgErr');
+  if (!d.Judul || !d.Isi) { err.textContent = 'Judul dan isi wajib diisi.'; return; }
+  if (!d.Mulai || !d.Selesai || d.Selesai <= d.Mulai) { err.textContent = 'Waktu selesai harus setelah waktu mulai.'; return; }
+  if (!d.Target.length) { err.textContent = 'Pilih minimal satu role tujuan.'; return; }
+  if (d.Tautan && !/^https?:\/\//i.test(d.Tautan)) { err.textContent = 'Tautan harus diawali http:// atau https://'; return; }
+  closeFormModal();
+  callServer('simpanPengumuman', [d], null, muatPengumumanAdmin, 'Menyimpan pengumuman...');
 }
