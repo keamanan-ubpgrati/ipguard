@@ -5446,6 +5446,14 @@ function kepBulanLabel(periode) {
   const [y, m] = String(periode || '').split('-');
   return (IPG_BULAN_PANJANG[Number(m) - 1] || '') + ' ' + (y || '');
 }
+/** Deklarasi bulan M = laporan kejadian bulan M-1. Contoh 2026-10 → {teks:'1–30 September 2026', bulanLalu:'September 2026', awal:'2026-09-01'} */
+function kepPeriodeLapor(periode) {
+  const [y, m] = String(periode || '').split('-').map(Number);
+  if (!y || !m) return { teks: '-', bulanLalu: '-', awal: '' };
+  const py = m === 1 ? y - 1 : y, pm = m === 1 ? 12 : m - 1, akhir = new Date(py, pm, 0).getDate();
+  const nama = IPG_BULAN_PANJANG[pm - 1] + ' ' + py;
+  return { teks: '1–' + akhir + ' ' + nama, bulanLalu: nama, awal: py + '-' + String(pm).padStart(2, '0') + '-01' };
+}
 function kepWaktu(v) { const s = String(v || ''); return s ? ipgTglPendek(s.slice(0, 10)) + ' ' + s.slice(11, 16) : '-'; }
 function kepPillJenis(d) {
   if (!d) return '<span class="pill pill-danger">Belum</span>';
@@ -5498,9 +5506,15 @@ function renderKepatuhanSaya() {
   wrap.innerHTML = `<div class="row g-3">
     <div class="col-lg-7"><div class="card-ip h-100">
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-        <h6 class="mb-0"><i class="bi bi-shield-check"></i> Deklarasi ${kepBulanLabel(d.periode)}</h6>${badge}</div>
-      <div class="section-sub mb-2">Selama bulan ini, apakah Anda mengalami konflik kepentingan atau menerima gratifikasi?</div>
+        <div><h6 class="mb-0"><i class="bi bi-shield-check"></i> Deklarasi ${kepBulanLabel(d.periode)}</h6>
+          <div class="small text-muted">Laporan kejadian ${kepPeriodeLapor(d.periode).teks}</div></div>${badge}</div>
+      <div class="section-sub mb-2">${b ? 'Deklarasi bulan ini sudah dikirim.' : `Selama ${kepPeriodeLapor(d.periode).teks}, apakah Anda mengalami konflik kepentingan atau menerima gratifikasi?`}</div>
       ${hasil}
+      ${b ? `<div class="small fw-bold mt-3 mb-1">Ada kejadian baru bulan ini? Laporkan langsung</div>${tile('COI') + tile('Gratifikasi')}` : ''}
+      ${(d.laporanBulanIni || []).length ? `<div class="small fw-bold mt-3 mb-1">Laporan COI / Gratifikasi saya bulan ini</div>
+        ${d.laporanBulanIni.map(l => `<div class="d-flex justify-content-between align-items-center py-1 small border-bottom">
+          <span>${l.Jenis} · kejadian ${l.tanggal ? ipgTglPendek(l.tanggal) : '-'}</span><span class="text-muted">dikirim ${kepWaktu(l.WaktuInput)}</span></div>`).join('')}` : ''}
+      <div class="small text-muted mt-2"><i class="bi bi-info-circle"></i> COI / gratifikasi yang terjadi bulan ini bisa langsung dilaporkan, tidak perlu menunggu deklarasi bulan depan.</div>
     </div></div>
     <div class="col-lg-5"><div class="card-ip h-100">
       <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
@@ -5513,12 +5527,13 @@ function renderKepatuhanSaya() {
       <hr class="my-3">
       <div class="small fw-bold mb-1">Riwayat deklarasi saya</div>
       ${(d.riwayat || []).length ? d.riwayat.map(r => `<div class="d-flex justify-content-between align-items-center py-1 small">
-          <span>${kepBulanLabel(r.Periode)}</span><span>${kepPillJenis(r)}</span></div>`).join('') : '<div class="small text-muted">Belum ada.</div>'}
+          <span>${kepBulanLabel(r.Periode)}<span class="text-muted"> · lap. ${kepPeriodeLapor(r.Periode).bulanLalu}</span></span>
+          <span>${kepPillJenis(r)}${r.jumlahLaporan > 1 ? ` <span class="pill pill-neutral">${r.jumlahLaporan} laporan</span>` : ''}</span></div>`).join('') : '<div class="small text-muted">Belum ada.</div>'}
     </div></div></div>`;
 }
 function pilihDeklarasiKep(jenis) {
   if (jenis === 'Tidak Ada Kejadian') {
-    openConfirmModal(`Kirim deklarasi "Tidak Ada Kejadian" untuk ${kepBulanLabel(kepSaya.periode)}?\n\nSaya menyatakan selama bulan ini tidak mengalami COI (Conflict of Interest) maupun gratifikasi.`,
+    openConfirmModal(`Kirim deklarasi "Tidak Ada Kejadian" untuk ${kepBulanLabel(kepSaya.periode)}?\n\nSaya menyatakan selama ${kepPeriodeLapor(kepSaya.periode).teks} tidak mengalami COI (Conflict of Interest) maupun gratifikasi.`,
       () => callServer('submitDeklarasiKepatuhan', ['Tidak Ada Kejadian', null], null, muatKepatuhanSaya, 'Mengirim deklarasi...'));
     return;
   }
@@ -5546,7 +5561,7 @@ function renderKepForm() {
       if (f.t === 'pills') return `<div class="col-12"><label class="form-label">${f.l}${wajib}</label><div class="d-flex flex-wrap gap-2" id="${id}" data-value="${escHtmlIpg(v)}">${f.opts.map(o => `
           <span class="pill" role="button" onclick="this.parentNode.dataset.value='${o}';renderKepPillsPilih(this.parentNode)" data-opt="${o}"
             style="cursor:pointer;border:1.5px solid var(--primary);${o === v ? 'background:var(--primary);color:#fff;' : 'background:transparent;color:var(--primary);'}">${o}</span>`).join('')}</div></div>`;
-      return `<div class="col-12"><label class="form-label">${f.l}${wajib}</label><input type="${f.t}" class="form-control" id="${id}" value="${escHtmlIpg(v)}" placeholder="${f.ph || ''}" ${f.t === 'date' ? `max="${ipgToday()}"` : ''}></div>`;
+      return `<div class="col-12"><label class="form-label">${f.l}${wajib}</label><input type="${f.t}" class="form-control" id="${id}" value="${escHtmlIpg(v)}" placeholder="${f.ph || ''}" ${f.t === 'date' ? `min="${kepPeriodeLapor(kepSaya && kepSaya.periode).awal}" max="${ipgToday()}"` : ''}>${f.t === 'date' ? `<div class="small text-muted mt-1">Bisa dipilih: ${ipgTglPendek(kepPeriodeLapor(kepSaya && kepSaya.periode).awal)} s.d. hari ini</div>` : ''}</div>`;
     }).join('') + '</div>';
   } else {
     const semua = langkah.flatMap(s => s.fields);
@@ -5554,7 +5569,11 @@ function renderKepForm() {
       <div class="form-check mt-3"><input class="form-check-input" type="checkbox" id="kepSetuju">
         <label class="form-check-label small" for="kepSetuju">Saya menyatakan data di atas benar dan dilaporkan dengan jujur sesuai ketentuan SMAP perusahaan.</label></div>`;
   }
-  wrap.innerHTML = stepper + `<div class="section-sub mb-2">Langkah ${i + 1} dari ${total} — ${judulLangkah[i]}</div>` + isi
+  const per = kepPeriodeLapor(kepSaya ? kepSaya.periode : ipgToday().slice(0, 7));
+  const info = i === 0 ? `<div class="small mb-2" style="background:var(--tint-blue);border-radius:var(--radius-md);padding:.55rem .75rem;">
+      <i class="bi bi-calendar-range"></i> Deklarasi ${kepBulanLabel(kepSaya && kepSaya.periode)}: laporkan kejadian <b>${per.teks}</b>.
+      Kejadian bulan ini juga bisa langsung dilaporkan.</div>` : '';
+  wrap.innerHTML = stepper + info + `<div class="section-sub mb-2">Langkah ${i + 1} dari ${total} — ${judulLangkah[i]}</div>` + isi
     + `<div class="small text-danger mt-2" id="kepFormErr"></div>
     <div class="d-flex justify-content-between mt-3">
       <button class="btn btn-outline-ip" onclick="${i ? 'kepFormLangkah(-1)' : 'closeFormModal()'}">${i ? '<i class="bi bi-arrow-left"></i> Kembali' : 'Batal'}</button>
@@ -5576,8 +5595,12 @@ function kepFormLangkah(arah) {
       const v = f.t === 'pills' ? (el.dataset.value || '') : el.value.trim();
       kepForm.data[f.k] = v;
       if (arah > 0 && f.req && !v && !kurang) kurang = f.l;
+      if (arah > 0 && f.t === 'date' && v && !kurang) {
+        const min = kepPeriodeLapor(kepSaya && kepSaya.periode).awal;
+        if (v < min || v > ipgToday()) kurang = '!Tanggal kejadian harus antara ' + ipgTglPendek(min) + ' dan hari ini.';
+      }
     });
-    if (kurang) { err.textContent = kurang + ' wajib diisi.'; return; }
+    if (kurang) { err.textContent = kurang[0] === '!' ? kurang.slice(1) : kurang + ' wajib diisi.'; return; }
   } else if (arah > 0) {
     if (!document.getElementById('kepSetuju').checked) { err.textContent = 'Centang pernyataan terlebih dahulu.'; return; }
     const detail = Object.assign({}, kepForm.data);
@@ -5650,7 +5673,8 @@ function renderKepPantauKerangka() {
       <div class="d-flex flex-wrap align-items-center gap-2 mb-2" id="kepTabs"></div>
       <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
         <label class="small text-muted mb-0" for="kepPeriodeInput">Periode</label>
-        <input type="month" class="form-control form-control-sm" style="width:auto;" id="kepPeriodeInput" value="${kepPeriode}" onchange="kepPeriode=this.value||kepPeriode;muatKepRekap()">
+        <input type="month" class="form-control form-control-sm" style="width:auto;" id="kepPeriodeInput" value="${kepPeriode}" onchange="kepPeriode=this.value||kepPeriode;document.getElementById('kepPeriodeKet').textContent='Laporan kejadian '+kepPeriodeLapor(kepPeriode).teks;muatKepRekap()">
+        <span class="small text-muted" id="kepPeriodeKet">Laporan kejadian ${kepPeriodeLapor(kepPeriode).teks}</span>
         <input type="text" class="form-control form-control-sm" style="flex:1;min-width:160px;" id="kepCari" placeholder="Cari nama, NRP, atau regu" oninput="renderKepTabel()">
         <button class="btn btn-outline-ip btn-sm-ip" onclick="cetakRekapKep()"><i class="bi bi-printer"></i> Cetak rekap</button>
       </div>
@@ -5676,7 +5700,8 @@ function muatKepRekap() {
 function renderKepStat() {
   const b = kepRekap.baris, n = b.length;
   const sudah = b.filter(r => r.deklarasi).length, telat = b.filter(r => r.deklarasi && r.deklarasi.Terlambat === 'Ya').length;
-  const coi = b.filter(r => r.deklarasi && r.deklarasi.Jenis === 'COI').length, grat = b.filter(r => r.deklarasi && r.deklarasi.Jenis === 'Gratifikasi').length;
+  const ada = (r, j) => (r.laporan || []).some(l => l.Jenis === j);
+  const coi = b.filter(r => ada(r, 'COI')).length, grat = b.filter(r => ada(r, 'Gratifikasi')).length;
   const pakta = b.filter(r => r.pakta).length;
   const cards = [
     { icon: 'bi-clipboard-check', bg: 'var(--tint-blue)', color: '#0C7A94', value: `${sudah}/${n}`, label: 'Sudah deklarasi ' + kepBulanLabel(kepRekap.periode) },
@@ -5701,9 +5726,10 @@ function renderKepTabel() {
     renderGenericTable('tblKepatuhan', [
       { label: 'Nama', render: r => escHtmlIpg(r.Nama) + (r.diluarMaster ? ' <span class="pill pill-neutral" title="Nama tidak cocok dengan Master Personel">?</span>' : '') },
       { label: 'NRP', key: 'NRP' }, { label: 'Regu', key: 'Regu' }, { label: 'Jabatan', key: 'Jabatan' },
-      { label: 'Deklarasi ' + kepBulanLabel(kepRekap.periode), render: r => kepPillJenis(r.deklarasi) },
+      { label: 'Deklarasi ' + kepBulanLabel(kepRekap.periode), render: r => kepPillJenis(r.deklarasi)
+          + ((r.laporan || []).length > (r.deklarasi && r.deklarasi.Jenis !== 'Tidak Ada Kejadian' ? 1 : 0) ? ` <span class="pill pill-neutral">${r.laporan.length} laporan</span>` : '') },
       { label: 'Diisi', render: r => r.deklarasi ? kepWaktu(r.deklarasi.WaktuInput) : '-' } ],
-      rows, r => (r.deklarasi && r.deklarasi.Jenis !== 'Tidak Ada Kejadian')
+      rows, r => (r.laporan || []).length
         ? `<button class="btn btn-outline-ip btn-sm-ip" title="Lihat detail" onclick="lihatDetailKep(${r._i})"><i class="bi bi-eye"></i></button>` : '-');
   } else {
     renderGenericTable('tblKepatuhan', [
@@ -5714,20 +5740,30 @@ function renderKepTabel() {
   }
 }
 function lihatDetailKep(i) {
-  const r = kepRekap.baris[i], d = r && r.deklarasi;
-  if (!d) return;
-  let det = {}; try { det = JSON.parse(d.DetailJSON || '{}'); } catch (e) {}
-  const fields = (KEP_FORM[d.Jenis] || []).flatMap(s => s.fields);
-  openFormModal(`${(KEP_OPSI[d.Jenis] || {}).judul || d.Jenis} — ${escHtmlIpg(r.Nama)}`, `
-    <div class="small text-muted mb-2">${escHtmlIpg(r.NRP || '-')} · Regu ${escHtmlIpg(r.Regu || '-')} · ${kepBulanLabel(d.Periode)} · dikirim ${kepWaktu(d.WaktuInput)}${d.Terlambat === 'Ya' ? ' (terlambat)' : ''}</div>
-    <div class="table-responsive-ip"><table class="table-ip"><tbody>${fields.map(f => `<tr><td class="text-muted" style="width:40%;">${f.l}</td><td>${escHtmlIpg(det[f.k] || '-')}</td></tr>`).join('')}</tbody></table></div>`);
+  const r = kepRekap.baris[i], list = (r && r.laporan) || [];
+  if (!list.length) return;
+  const blok = (d, n) => {
+    let det = {}; try { det = JSON.parse(d.DetailJSON || '{}'); } catch (e) {}
+    const fields = (KEP_FORM[d.Jenis] || []).flatMap(s => s.fields);
+    return `<div class="fw-bold mt-${n ? 3 : 0} mb-1">${n + 1}. ${(KEP_OPSI[d.Jenis] || {}).judul || d.Jenis}</div>
+      <div class="small text-muted mb-1">Dikirim ${kepWaktu(d.WaktuInput)}${d.Terlambat === 'Ya' ? ' (terlambat)' : ''}</div>
+      <div class="table-responsive-ip"><table class="table-ip"><tbody>${fields.map(f => `<tr><td class="text-muted" style="width:40%;">${f.l}</td><td>${escHtmlIpg(det[f.k] || '-')}</td></tr>`).join('')}</tbody></table></div>`;
+  };
+  openFormModal(`Laporan COI / Gratifikasi — ${escHtmlIpg(r.Nama)}`, `
+    <div class="small text-muted mb-2">${escHtmlIpg(r.NRP || '-')} · Regu ${escHtmlIpg(r.Regu || '-')} · Deklarasi ${kepBulanLabel(kepRekap.periode)}
+      (laporan kejadian ${kepPeriodeLapor(kepRekap.periode).teks}) · ${list.length} laporan</div>
+    ${list.map(blok).join('')}`);
 }
 function cetakRekapKep() {
   if (!kepRekap) return;
   const rows = kepBarisTersaring(), td = 'border:1px solid #ccc;padding:5px;font-size:11px;', th = td + 'background:#eef2f8;text-align:left;';
-  const isiDek = r => r.deklarasi ? (r.deklarasi.Jenis + (r.deklarasi.Terlambat === 'Ya' ? ' (terlambat)' : '')) : 'Belum';
+  const isiDek = r => {
+    if (!r.deklarasi) return 'Belum';
+    const n = (r.laporan || []).length, tambah = n - (r.deklarasi.Jenis !== 'Tidak Ada Kejadian' ? 1 : 0);
+    return r.deklarasi.Jenis + (r.deklarasi.Terlambat === 'Ya' ? ' (terlambat)' : '') + (tambah > 0 ? ` + ${tambah} laporan COI/gratifikasi` : '');
+  };
   const body = buildLetterheadHTML('rekapKepatuhan',
-      `Deklarasi ${kepBulanLabel(kepRekap.periode)} &nbsp;|&nbsp; Pakta Integritas SMAP ${kepRekap.tahun} &nbsp;|&nbsp; ${rows.length} personel`)
+      `Deklarasi ${kepBulanLabel(kepRekap.periode)} (laporan kejadian ${kepPeriodeLapor(kepRekap.periode).teks}) &nbsp;|&nbsp; Pakta Integritas SMAP ${kepRekap.tahun} &nbsp;|&nbsp; ${rows.length} personel`)
     + `<table style="width:100%;border-collapse:collapse;"><thead><tr>
         <th style="${th}">No</th><th style="${th}">Nama</th><th style="${th}">NRP</th><th style="${th}">Regu</th><th style="${th}">Jabatan</th>
         <th style="${th}">Deklarasi</th><th style="${th}">Diisi</th><th style="${th}">Pakta SMAP</th></tr></thead>
@@ -5777,7 +5813,7 @@ function kepBannerDashboard() {
   google.script.run.withSuccessHandler(res => {
     if (!res || !res.success) return;
     const d = res.data, pesan = [];
-    if (!d.bulanIni) pesan.push(`deklarasi ${kepBulanLabel(d.periode)}${d.tanggal > d.batas ? ' (sudah lewat tanggal ' + d.batas + ')' : ' (batas tanggal ' + d.batas + ')'}`);
+    if (!d.bulanIni) pesan.push(`deklarasi ${kepBulanLabel(d.periode)} (laporan kejadian ${kepPeriodeLapor(d.periode).teks})${d.tanggal > d.batas ? ' (sudah lewat tanggal ' + d.batas + ')' : ' (batas tanggal ' + d.batas + ')'}`);
     if (!d.paktaTahunIni) pesan.push('Pakta Integritas SMAP ' + d.tahun);
     const c = document.getElementById('app-container');
     if (!pesan.length || !c || document.getElementById('kepBanner')) return;
