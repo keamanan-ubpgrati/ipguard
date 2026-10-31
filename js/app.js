@@ -3091,8 +3091,21 @@ function submitBarangKeluarForm(evt) {
 // ════════════════════════════════════════════════════════
 const JENIS_LAPORAN_LABELS = {
   mutasiJaga: 'BA Mutasi Jaga', checklistSarpras: 'Checklist Sarpras', rekapPatroli: 'Rekap Patroli',
-  izinTamu: 'Izin Tamu', izinKendaraan: 'Izin Kendaraan', suratBarang: 'Surat Barang Keluar', baIncident: 'BA Incident'
+  izinTamu: 'Izin Tamu', izinKendaraan: 'Izin Kendaraan', suratBarang: 'Surat Barang Keluar', baIncident: 'BA Incident',
+  paktaIntegritas: 'Pakta Integritas SMAP (Sistem Manajemen Anti Penyuapan)', rekapKepatuhan: 'Rekap Kepatuhan SMAP'
 };
+/** Nilai cadangan bila baris header di LAPORAN_HEADER_CONFIG belum ada / masih kosong */
+const HEADER_LAPORAN_CADANGAN = {
+  paktaIntegritas: { NoDokumen: 'GRT.13.01.08', TanggalTerbit: '1 Agustus 2026', Revisi: '00' },
+  rekapKepatuhan: { NoDokumen: 'GRT.13.01.09', TanggalTerbit: '1 Agustus 2026', Revisi: '00' }
+};
+/** Sheets kadang menyimpan "1 Agustus 2026" sebagai tanggal → tampilkan kembali sebagai teks tanggal Indonesia */
+function ipgTeksTanggalTerbit(v) {
+  if (v === undefined || v === null || v === '') return '';
+  const s = String(v);
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) { const d = new Date(s); if (!isNaN(d)) return d.getDate() + ' ' + IPG_BULAN_PANJANG[d.getMonth()] + ' ' + d.getFullYear(); }
+  return s;
+}
 let PLN_PRINT_LOGO = ''; // diisi belakangan oleh loadDefaultPrintLogo() — supaya tidak ikut memberatkan halaman login
 /** jenisOrTitle: key jenis laporan (pakai config Admin) ATAU judul teks langsung (kompatibel dgn pemanggilan lama/generik) */
 function buildLetterheadHTML(jenisOrTitle, arg2, arg3, meta) {
@@ -3101,11 +3114,11 @@ function buildLetterheadHTML(jenisOrTitle, arg2, arg3, meta) {
   const namaSistem = (AppState.config && AppState.config.namaSistem) || 'IP GUARD V3 — SISTEM MANAJEMEN PENGAMANAN';
   let judul, noDokumen, tanggalTerbit, revisi, metaLines;
   if (isKnownType) {
-    const cfg = AppState.laporanHeaderConfig[jenisOrTitle] || {};
+    const cfg = AppState.laporanHeaderConfig[jenisOrTitle] || {}, cad = HEADER_LAPORAN_CADANGAN[jenisOrTitle] || {};
     judul = cfg.JudulFormulir || JENIS_LAPORAN_LABELS[jenisOrTitle];
-    noDokumen = cfg.NoDokumen || '-';
-    tanggalTerbit = cfg.TanggalTerbit || '-';
-    revisi = cfg.Revisi || '-';
+    noDokumen = cfg.NoDokumen || cad.NoDokumen || '-';
+    tanggalTerbit = ipgTeksTanggalTerbit(cfg.TanggalTerbit) || cad.TanggalTerbit || '-';
+    revisi = (cfg.Revisi !== undefined && cfg.Revisi !== '' ? String(cfg.Revisi) : '') || cad.Revisi || '-';
     metaLines = arg2;
   } else {
     judul = jenisOrTitle;
@@ -5619,7 +5632,7 @@ function tandaTanganPaktaKep() {
 function cetakPaktaKep(p) {
   if (!p) return;
   const tahun = String(p.Tahun || '').slice(0, 4), tgl = String(p.WaktuTandaTangan || '').slice(0, 10);
-  const body = buildLetterheadHTML('PAKTA INTEGRITAS SMAP', `PI-SMAP/${tahun}/${p.NRP || '-'}`, '', { tanggalTerbit: '1 Agustus 2026', revisi: '00' })
+  const body = buildLetterheadHTML('paktaIntegritas', '')
     + `<div style="font-size:12px;">${kepNaskahPakta(p, tahun)}</div>
       <div style="text-align:center;font-size:12px;margin-top:14px;">Pasuruan, ${kepTglPanjang(tgl)}</div>`
     + buildApprovalTable([{ label: 'Yang Membuat Pernyataan,', name: p.Nama }], `Pakta Integritas SMAP ${tahun} — ${p.Nama} (${p.NRP || '-'})`,
@@ -5711,7 +5724,7 @@ function cetakRekapKep() {
   if (!kepRekap) return;
   const rows = kepBarisTersaring(), td = 'border:1px solid #ccc;padding:5px;font-size:11px;', th = td + 'background:#eef2f8;text-align:left;';
   const isiDek = r => r.deklarasi ? (r.deklarasi.Jenis + (r.deklarasi.Terlambat === 'Ya' ? ' (terlambat)' : '')) : 'Belum';
-  const body = buildLetterheadHTML('REKAP KEPATUHAN SMAP', `KEP/${kepRekap.periode}`,
+  const body = buildLetterheadHTML('rekapKepatuhan',
       `Deklarasi ${kepBulanLabel(kepRekap.periode)} &nbsp;|&nbsp; Pakta Integritas SMAP ${kepRekap.tahun} &nbsp;|&nbsp; ${rows.length} personel`)
     + `<table style="width:100%;border-collapse:collapse;"><thead><tr>
         <th style="${th}">No</th><th style="${th}">Nama</th><th style="${th}">NRP</th><th style="${th}">Regu</th><th style="${th}">Jabatan</th>
