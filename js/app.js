@@ -4471,14 +4471,34 @@ function gantiKodeQrTitik(id) {
 // ════════════════════════════════════════════════════════
 // ADMINISTRASI AKUN (Admin only — PRD Bab 7.1)
 // ════════════════════════════════════════════════════════
+// Tab menu Administrasi — semua kartu tetap dimuat, hanya satu tab yang ditampilkan (pola tab Master Data)
+const ADM_TABS = [
+  { key: 'akun', label: 'Akun Pengguna' }, { key: 'akses', label: 'Akses Menu' }, { key: 'pengumuman', label: 'Pengumuman' },
+  { key: 'header', label: 'Header Laporan' }, { key: 'notifikasi', label: 'Notifikasi & Kontak' },
+  { key: 'batal', label: 'Data Dibatalkan' }, { key: 'backup', label: 'Backup & Arsip' }
+];
+let admTab = 'akun';
+function renderAdmTabs() {
+  const wrap = document.getElementById('admTabs');
+  if (!wrap) return;
+  wrap.innerHTML = ADM_TABS.map(t => {
+    const active = admTab === t.key;
+    return `<button type="button" onclick="pilihAdmTab('${t.key}')"
+      style="border:1.5px solid var(--primary);border-radius:999px;padding:.35rem .9rem;font-size:.8rem;font-weight:600;margin:0 .4rem .4rem 0;
+      background:${active ? 'var(--primary)' : '#fff'};color:${active ? '#fff' : 'var(--primary)'};">${t.label}</button>`;
+  }).join('');
+  document.querySelectorAll('#app-container [data-adm]').forEach(el => { el.style.display = el.dataset.adm === admTab ? '' : 'none'; });
+}
+function pilihAdmTab(key) { admTab = key; renderAdmTabs(); }
 function loadAdministrasi() {
   const c = document.getElementById('app-container');
   c.innerHTML = sectionHeader('Administrasi Akun & Konfigurasi Sistem', '8 Role, approval registrasi, audit trail — khusus Admin')
-    + `<div class="card-ip mb-3" id="pengAdminCard"><h6 class="mb-2"><i class="bi bi-megaphone"></i> Pengumuman Dashboard</h6>
+    + `<div class="d-flex flex-wrap mb-2" id="admTabs"></div>`
+    + `<div class="card-ip mb-3" data-adm="pengumuman" id="pengAdminCard"><h6 class="mb-2"><i class="bi bi-megaphone"></i> Pengumuman Dashboard</h6>
          <div class="small text-muted"><span class="spinner-border spinner-border-sm"></span> Memuat...</div></div>`
-    + `<div class="card-ip mb-3" id="backupArsipCard"><h6 class="mb-2"><i class="bi bi-archive"></i> Backup & Arsip Data</h6>
+    + `<div class="card-ip mb-3" data-adm="backup" id="backupArsipCard"><h6 class="mb-2"><i class="bi bi-archive"></i> Backup & Arsip Data</h6>
          <div class="small text-muted"><span class="spinner-border spinner-border-sm"></span> Memuat status...</div></div>`
-    + `<div class="card-ip mb-3">
+    + `<div class="card-ip mb-3" data-adm="notifikasi">
          <h6 class="mb-2"><i class="bi bi-envelope-gear"></i> Konfigurasi Notifikasi</h6>
          <label class="form-label mb-1">Tujuan Notifikasi Izin Tamu Masuk</label>
          <div class="row g-2 align-items-end">
@@ -4505,7 +4525,7 @@ function loadAdministrasi() {
          <p class="section-sub mt-2 mb-0">Dikirimi email saat ada pengajuan Barang Keluar baru, dan menerima tembusan saat pengajuan disetujui atau ditolak TL / SPS Keamanan. Pemohon ikut dikirimi email keputusan ke alamat di akunnya.</p>
          <p class="section-sub mt-1 mb-0">Satu kolom boleh berisi lebih dari satu alamat, dipisah koma. <b>Kolom kosong dilewati dan tidak memakai kuota email.</b></p>
        </div>
-       <div class="card-ip mb-3">
+       <div class="card-ip mb-3" data-adm="notifikasi">
          <h6 class="mb-2"><i class="bi bi-telephone-forward"></i> Kontak Instansi Darurat</h6>
          <p class="section-sub mb-2">Nomor & email instansi untuk fitur "Hubungi Darurat" di modul Telepon Penting. Nomor WA/HP kosong tetap bisa isi email saja (atau sebaliknya).</p>
          <div class="row g-2 mb-2">
@@ -4520,7 +4540,7 @@ function loadAdministrasi() {
          </div>
          <button class="btn btn-outline-ip btn-sm-ip" onclick="saveEmergencyEmails()"><i class="bi bi-check2"></i> Simpan Kontak Instansi Darurat</button>
        </div>
-       <div class="card-ip mb-3">
+       <div class="card-ip mb-3" data-adm="header">
          <h6 class="mb-1"><i class="bi bi-file-earmark-text"></i> Header Laporan PDF</h6>
          <p class="section-sub mb-3">Konfigurasi header resmi yang tampil di bagian atas setiap dokumen cetak (BA, Formulir, Surat).</p>
          <div class="row g-2 mb-3 align-items-end">
@@ -4544,12 +4564,12 @@ function loadAdministrasi() {
          <button class="btn btn-outline-ip btn-sm-ip mb-3" onclick="saveNamaUnitSistem()"><i class="bi bi-check2"></i> Simpan Nama Unit/Sistem</button>
          <div id="tblLaporanHeader"></div>
        </div>
-       <div class="card-ip mb-3">
+       <div class="card-ip mb-3" data-adm="akses">
          <h6 class="mb-1"><i class="bi bi-shield-lock"></i> Akses Menu per Role</h6>
          <p class="section-sub mb-3">Centang menu mana yang boleh diakses tiap role. Alur approval bertahap (Danru → TL Keamanan, dst.) tetap mengikuti aturan sistem, tidak diatur di sini.</p>
          <div id="tblRoleAccess"><div class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></div></div>
        </div>
-       <div class="card-ip mb-3">
+       <div class="card-ip mb-3" data-adm="batal">
          <h6 class="mb-1"><i class="bi bi-archive"></i> Data Dibatalkan</h6>
          <p class="section-sub mb-2">Data yang dibatalkan Admin disembunyikan dari tabel, laporan, dan dashboard, tetapi tetap tersimpan dan bisa dipulihkan.</p>
          <div class="d-flex gap-2 mb-2 flex-wrap">
@@ -4558,7 +4578,9 @@ function loadAdministrasi() {
          </div>
          <div id="tblDataDibatalkan"></div>
        </div>
-       <div id="tblUsers"></div>`;
+       <div data-adm="akun"><div class="card-ip mb-3"><h6 class="mb-1"><i class="bi bi-people"></i> Akun Pengguna</h6>
+         <p class="section-sub mb-2">Setujui pendaftaran, ubah role, aktif/nonaktifkan akun, dan buka kunci login.</p><div id="tblUsers"></div></div></div>`;
+  renderAdmTabs();
   loadDataDibatalkan();
   loadLaporanHeaderTable();
   loadRoleAccessTable();
