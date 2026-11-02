@@ -2180,7 +2180,7 @@ function openLogPatroliForm() {
   document.getElementById('ptPutaran').value = String(ipgPutaranNow()); // otomatis sesuai jadwal, tetap bisa diubah
   ipgUpdateDinas('pt');
   google.script.run.withSuccessHandler(res => {
-    patroliTitikList = res.data || [];
+    patroliTitikList = titikPatroliAktif(res.data);
     const sel = document.getElementById('ptTitik');
     if (!sel) return;
     sel.innerHTML = patroliTitikList.length
@@ -2431,7 +2431,7 @@ function cariLogPatroliTerkait() {
   ]).then(([logRes, titikRes]) => {
     if (ipgGetDinas('rp') !== tanggal || val('rpShift') !== shift || val('rpRegu') !== regu) return; // pilihan sudah diganti
     const logs = ((logRes.data && logRes.data.rows) || []).filter(r => ipgDinasOf(r)===tanggal && r.Shift===shift && r.Regu===regu);
-    const titikMaster = titikRes.data || [];
+    const titikMaster = titikPatroliAktif(titikRes.data);
     lastPatroliLogsForRekap = logs;
     const unik = countUnikTitikPatroli(logs);
     const totalPutaran = titikMaster.length * (PATROLI_PUTARAN_LABELS[shift] || []).length;
@@ -2503,7 +2503,9 @@ function cetakRekapPatroli(id) {
     const r = (rekapRes.data||[]).find(x => x.ID === id);
     if (!r) { showToast('Gagal', 'Data tidak ditemukan.', 'danger'); return; }
     let logs = []; try { logs = JSON.parse(r.TitikEntries || '[]'); } catch(e) {}
-    const titikMaster = titikRes.data || [];
+    // Titik aktif + titik yang tercatat di rekap ini (rekap lama tetap utuh walau titiknya kini dinonaktifkan)
+    const adaDiLog = {}; logs.forEach(l => { adaDiLog[l.TitikPatroli] = 1; });
+    const titikMaster = (titikRes.data || []).filter(t => String(t.Status || '').trim() !== 'Non-Aktif' || adaDiLog[t.NamaTitik]);
     const body = buildLetterheadHTML('rekapPatroli',
         `No. Rekap: ${r.NoRekap} &nbsp;|&nbsp; Shift ${r.Shift} &nbsp;|&nbsp; Regu ${r.Regu} &nbsp;|&nbsp; ${ipgTanggalDinasPanjang(r)}`) + `
       <div>${buildPatroliMatrixPrintHtml(r.Shift, titikMaster, logs)}</div>
@@ -4307,9 +4309,12 @@ const MASTER_SCHEMAS = {
     { key: 'KodeQR', label: 'Kode QR', type: 'text', readonly: true, placeholder: 'Otomatis — dibuat saat Cetak Stiker QR' },
     { key: 'Latitude', label: 'Latitude', type: 'number', step: 'any' },
     { key: 'Longitude', label: 'Longitude', type: 'number', step: 'any' },
-    { key: 'PosJaga', label: 'Pos Jaga', type: 'select', options: OPT_POS }
+    { key: 'PosJaga', label: 'Pos Jaga', type: 'select', options: OPT_POS },
+    { key: 'Status', label: 'Status', type: 'select', options: ['Aktif','Non-Aktif'] }
   ]
 };
+/** Titik patroli aktif saja — kosong dianggap Aktif (data lama). Non-Aktif tidak dihitung & tidak perlu di-scan. */
+function titikPatroliAktif(rows) { return (rows || []).filter(t => String(t.Status || '').trim() !== 'Non-Aktif'); }
 
 let currentMasterSheet = 'MASTER_PERSONEL';
 let currentMasterRows = [];
@@ -4320,7 +4325,8 @@ function loadMasterTab(sheetName) {
   if (extra) extra.innerHTML = sheetName === 'MASTER_TITIK_PATROLI'
     ? `<div class="card-ip mb-3 d-flex flex-wrap align-items-center gap-2" style="padding:.85rem 1rem;">
          <div class="flex-grow-1 small"><b>Stiker QR titik patroli.</b> Kode QR dibuat otomatis untuk titik yang belum punya kode.
-           Titik yang sudah punya kode tidak berubah, jadi stiker terpasang tetap berlaku.</div>
+           Titik yang sudah punya kode tidak berubah, jadi stiker terpasang tetap berlaku.
+           Titik berstatus <b>Non-Aktif</b> tidak muncul di pilihan patroli, tidak bisa di-scan, dan tidak dihitung kepatuhannya.</div>
          <button class="btn btn-primary-ip btn-sm-ip" onclick="cetakStikerQrTitik()"><i class="bi bi-qr-code"></i> Cetak Stiker QR</button>
        </div>` : sheetName === 'MASTER_POS'
     ? `<div class="card-ip mb-3 d-flex flex-wrap align-items-center gap-2" style="padding:.85rem 1rem;">
@@ -4332,7 +4338,9 @@ function loadMasterTab(sheetName) {
     const rows = res.data || [];
     currentMasterRows = rows;
     if (sheetName === 'MASTER_POS') syncOptPos(rows);
-    const cols = rows.length ? Object.keys(rows[0]).filter(k=>k!=='ID').map(k=>({label:k, key:k})) : [];
+    const cols = rows.length ? Object.keys(rows[0]).filter(k=>k!=='ID').map(k=> k === 'Status'
+      ? { label: 'Status', render: r => `<span class="pill ${String(r.Status||'').trim()==='Non-Aktif'?'pill-neutral':'pill-success'}">${String(r.Status||'').trim()||'Aktif'}</span>` }
+      : {label:k, key:k}) : [];
     renderGenericTable('tblMaster', cols, rows, row =>
       `<button class="btn btn-outline-ip btn-sm-ip" onclick="openMasterForm('${row.ID}')"><i class="bi bi-pencil"></i></button>
        ${sheetName === 'MASTER_TITIK_PATROLI' ? `<button class="btn btn-outline-ip btn-sm-ip" title="Ganti kode QR (stiker hilang/rusak)" onclick="gantiKodeQrTitik('${row.ID}')"><i class="bi bi-arrow-repeat"></i></button>` : ''}
