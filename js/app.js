@@ -853,7 +853,7 @@ function openStatusKeamananDrilldown() {
 function loadDashboard() {
   const c = document.getElementById('app-container');
   c.innerHTML = `<div class="text-center py-5"><div class="spinner-border" style="color:#0C7A94"></div></div>`;
-  google.script.run.withSuccessHandler(res => { renderDashboard(res); pengBannerDashboard(); kepBannerDashboard(); }).withFailureHandler(e=>showToast('Error',e.message,'danger')).getDashboardData();
+  google.script.run.withSuccessHandler(res => { renderDashboard(res); pengBannerDashboard(); kepBannerDashboard(); if (['SATPAM','DANRU','KASATPAM'].includes(AppState.user.Role)) ktaBannerDashboard(); }).withFailureHandler(e=>showToast('Error',e.message,'danger')).getDashboardData();
 }
 let dashboardJurnalPosHariIni = [];
 const SHIFT_AKTIF_ICON = { Pagi: 'bi-sun-fill', Sore: 'bi-cloud-sun-fill', Malam: 'bi-moon-stars-fill' };
@@ -3566,21 +3566,58 @@ let ktaAllRows = [];
 let ktaFormOpenFor = null; // null = tertutup, 'new' = tambah baru, id = edit
 let ktaFotoUrl = '';
 
+let ktaMode = 'pribadi', ktaSaya = [];
 function loadKta() {
   const c = document.getElementById('app-container');
-  c.innerHTML = sectionHeader('KTA Monitoring', 'Reminder otomatis harian 07:00 WIB dikirim ke Admin untuk KTA ≤90 hari.')
-    + `<div class="mb-3 d-flex justify-content-end">
-         <button class="btn btn-primary-ip" onclick="toggleKtaForm('new')"><i class="bi bi-plus-lg"></i> Input Data KTA</button>
-       </div>
+  c.innerHTML = sectionHeader('KTA Monitoring', 'Masa berlaku Kartu Tanda Anggota Satpam — pengingat otomatis untuk KTA ≤90 hari.')
+    + `<div id="ktaSayaWrap" class="mb-3"><div class="card-ip text-center text-muted py-4"><span class="spinner-border spinner-border-sm"></span> Memuat...</div></div>
+       <div id="ktaSemuaWrap"></div>`;
+  google.script.run.withSuccessHandler(res => {
+    if (!res.success) { document.getElementById('ktaSayaWrap').innerHTML = `<div class="card-ip text-danger small">${res.message}</div>`; return; }
+    ktaMode = res.data.mode; ktaSaya = res.data.saya || []; ktaAllRows = res.data.semua || [];
+    renderKtaSaya();
+    const wrap = document.getElementById('ktaSemuaWrap');
+    if (ktaMode === 'pribadi') { wrap.innerHTML = ''; return; }
+    wrap.innerHTML = `
+      ${ktaMode === 'kelola' ? `<div class="mb-3 d-flex justify-content-end">
+         <button class="btn btn-primary-ip" onclick="toggleKtaForm('new')"><i class="bi bi-plus-lg"></i> Input Data KTA</button></div>` : ''}
        <div id="ktaDashboardWrap" class="row g-3 mb-3"></div>
        <div id="ktaFormWrap" class="card-ip mb-3" style="display:none;"></div>
+       ${ktaMode === 'pantau' ? '<div class="small text-muted mb-2"><i class="bi bi-eye"></i> Mode pantau: hanya lihat. Perubahan data KTA dilakukan Admin, TL Keamanan, atau SPS Keamanan.</div>' : ''}
        <div class="mb-3"><input type="text" class="form-control" id="ktaSearchInput" placeholder="Cari nama, No. KTA, atau Regu..." oninput="renderKtaTable()"></div>
        <div id="tblKta"></div>`;
-  google.script.run.withSuccessHandler(res => {
-    ktaAllRows = res.data || [];
     renderKtaDashboard();
     renderKtaTable();
-  }).getAllData('KTA');
+  }).getKtaData();
+}
+/** Kartu "KTA Saya" — dipakai semua role yang punya data KTA atas namanya */
+function renderKtaSaya() {
+  const wrap = document.getElementById('ktaSayaWrap');
+  if (!wrap) return;
+  if (!ktaSaya.length) {
+    wrap.innerHTML = ktaMode === 'kelola' ? '' : `<div class="card-ip"><h6 class="mb-1"><i class="bi bi-person-vcard"></i> KTA Saya</h6>
+      <div class="small text-muted">Data KTA atas nama <b>${escHtmlIpg(AppState.user.Nama)}</b> belum terdaftar. Hubungi Admin / TL Keamanan agar data KTA Anda diinput dengan nama yang sama seperti akun ini.</div></div>`;
+    return;
+  }
+  wrap.innerHTML = ktaSaya.map(k => {
+    const s = sisaHariInfo(k.MasaBerlaku);
+    const warna = s.hari === null ? '#6B7785' : s.hari < 0 ? '#E53935' : s.hari <= 90 ? '#FB8C00' : '#00913E';
+    const tint = s.hari === null ? 'var(--tint-blue)' : s.hari < 0 ? 'var(--tint-red)' : s.hari <= 90 ? 'var(--tint-yellow)' : 'var(--tint-green)';
+    const pesan = s.hari === null ? '' : s.hari < 0 ? `KTA Anda sudah habis masa berlakunya. Segera ajukan perpanjangan ke Kasatpam / TL Keamanan.`
+      : s.hari <= 90 ? `KTA Anda akan habis dalam ${s.hari} hari. Segera siapkan berkas perpanjangan.` : '';
+    const baris = (l, v) => `<div class="d-flex justify-content-between py-1 small border-bottom"><span class="text-muted">${l}</span><b class="text-end">${escHtmlIpg(v || '-')}</b></div>`;
+    return `<div class="card-ip mb-2"><div class="row g-3 align-items-center">
+      <div class="col-md-4"><div style="background:${tint};border-radius:var(--radius-md);padding:1rem;text-align:center;">
+        <div class="small text-muted">Sisa masa berlaku</div>
+        <div style="font-size:2rem;font-weight:800;color:${warna};line-height:1.2;">${s.hari === null ? '-' : s.hari < 0 ? 'Habis' : s.hari + ' hari'}</div>
+        <div class="small">s.d. ${k.MasaBerlaku ? ipgTglPendek(String(k.MasaBerlaku).slice(0, 10)) : '-'}</div></div></div>
+      <div class="col-md-8">
+        <h6 class="mb-2"><i class="bi bi-person-vcard"></i> KTA Saya <span class="pill ${k.Status === 'Aktif' ? 'pill-success' : 'pill-neutral'}">${escHtmlIpg(k.Status || '-')}</span></h6>
+        ${baris('Nama', k.Nama)}${baris('No. KTA', k.NoKTA)}${baris('Jenis KTA', k.JenisKTA)}${baris('Tanggal terbit', k.TanggalTerbit ? ipgTglPendek(String(k.TanggalTerbit).slice(0, 10)) : '')}
+        ${pesan ? `<div class="small mt-2 fw-semibold" style="color:${warna};"><i class="bi bi-exclamation-triangle"></i> ${pesan}</div>` : ''}
+        ${k.FotoUrl ? `<a href="${escHtmlIpg(k.FotoUrl)}" target="_blank" rel="noopener" class="btn btn-outline-ip btn-sm-ip mt-2"><i class="bi bi-image"></i> Lihat foto KTA</a>` : ''}
+      </div></div></div>`;
+  }).join('');
 }
 function renderKtaDashboard() {
   const total = ktaAllRows.length;
@@ -3622,10 +3659,10 @@ function renderKtaTable() {
     [ {label:'Nama', key:'Nama'}, {label:'Regu', key:'Regu'}, {label:'No. KTA', render:r=>r.NoKTA||'-'}, {label:'Jenis KTA', render:r=>r.JenisKTA||'-'},
       {label:'Masa Berlaku', render:r=>(r.MasaBerlaku||'-').toString().slice(0,10)},
       {label:'Sisa Hari', render:r=>`<span class="pill ${r._sisa.pill}">${r._sisa.teks}</span>`},
-      {label:'Foto', render:r=> r.FotoUrl ? `<a href="${r.FotoUrl}" target="_blank" class="pill pill-info"><i class="bi bi-camera-fill"></i> Lihat</a>` : '-'},
+      ...(ktaMode === 'kelola' ? [{label:'Foto', render:r=> r.FotoUrl ? `<a href="${r.FotoUrl}" target="_blank" class="pill pill-info"><i class="bi bi-camera-fill"></i> Lihat</a>` : '-'}] : []),
       {label:'Status', render:r=>`<span class="pill ${r.Status==='Aktif'?'pill-success':'pill-neutral'}">${r.Status||'-'}</span>`} ],
     rows,
-    row => `<button class="btn btn-outline-ip btn-sm-ip" onclick="toggleKtaForm('${row.ID}')"><i class="bi bi-pencil"></i></button>
+    ktaMode !== 'kelola' ? null : row => `<button class="btn btn-outline-ip btn-sm-ip" onclick="toggleKtaForm('${row.ID}')"><i class="bi bi-pencil"></i></button>
             <button class="btn btn-outline-ip btn-sm-ip" onclick="openConfirmModal('Hapus data KTA ini?', ()=>callServer('deleteRecord',['KTA','${row.ID}'],'Data dihapus.',loadKta))"><i class="bi bi-trash"></i></button>`
   );
 }
@@ -5841,6 +5878,20 @@ function kepKanalPengaduanHtml() {
 }
 
 /** Pengingat di Dashboard untuk Satpam/Danru/Kasatpam yang belum deklarasi bulan ini atau belum tanda tangan Pakta */
+/** Banner Dashboard bila KTA milik sendiri ≤90 hari / sudah habis */
+function ktaBannerDashboard() {
+  google.script.run.withSuccessHandler(res => {
+    if (!res || !res.success) return;
+    const k = (res.data.saya || []).map(r => Object.assign({ _s: sisaHariInfo(r.MasaBerlaku) }, r))
+      .filter(r => r._s.hari !== null && r._s.hari <= 90).sort((a, b) => a._s.hari - b._s.hari)[0];
+    if (!k || document.getElementById('ktaBanner')) return;
+    const slot = dashBannerSlot('kepSlot'); if (!slot) return;
+    const habis = k._s.hari < 0;
+    slot.insertAdjacentHTML('beforeend', `<div id="ktaBanner" class="alert ${habis ? 'alert-danger' : 'alert-warning'} d-flex align-items-center gap-2 flex-wrap" role="alert">
+      <i class="bi bi-person-vcard"></i><div class="flex-grow-1">${habis ? 'KTA Anda sudah habis masa berlakunya.' : `KTA Anda akan habis dalam <b>${k._s.hari} hari</b>.`} Segera ajukan perpanjangan.</div>
+      <button class="btn btn-primary-ip btn-sm-ip" onclick="navigateTo('kta')">Lihat KTA</button></div>`);
+  }).getKtaData();
+}
 function kepBannerDashboard() {
   if (!KEP_ROLE_WAJIB.includes(AppState.user.Role)) return;
   google.script.run.withSuccessHandler(res => {
