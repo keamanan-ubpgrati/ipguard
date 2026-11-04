@@ -27,7 +27,7 @@ const MENU = [
     { id: 'patroli', label: 'Patroli QR & GPS', icon: 'bi-geo-alt', roles: ['SATPAM','DANRU','TL_KEAMANAN','KASATPAM','SPS_KEAMANAN','ADMIN'], aliases: ['patroli','qr','gps','rounds'] },
   ]},
   { group: 'KONTROL AKSES & LOGISTIK', items: [
-    { id: 'izinTamu', label: 'Izin Tamu Masuk', icon: 'bi-person-badge', roles: 'ALL', aliases: ['tamu','visitor'] },
+    { id: 'izinTamu', label: 'Izin Tamu Masuk A', icon: 'bi-person-badge', roles: 'ALL', aliases: ['tamu','visitor'] },
     { id: 'kendaraan', label: 'Izin Kendaraan Masuk A', icon: 'bi-truck', roles: 'ALL', aliases: ['kendaraan','mobil','gerbang'] },
     { id: 'barangKeluar', label: 'Barang Keluar', icon: 'bi-box-arrow-up-right', badge:'v3.2', roles: 'ALL', aliases: ['barang','surat pas'] },
   ]},
@@ -638,7 +638,7 @@ function renderSidebar() {
 const SECTION_TITLES = {
   dashboard: 'Dashboard Operasional Pengamanan', mutasiJaga: 'Mutasi Jaga Pos — Serah Terima',
   checklistSarpras: 'Checklist Sarana & Prasarana', patroli: 'Patroli QR & GPS',
-  izinTamu: 'Izin Tamu Masuk', kendaraan: 'Izin Kendaraan Masuk A',
+  izinTamu: 'Izin Tamu Masuk A', kendaraan: 'Izin Kendaraan Masuk A',
   barangKeluar: 'Pengajuan Barang Keluar', incident: 'Incident & Gangguan Keamanan',
   kta: 'KTA Monitoring', kepatuhan: 'Kepatuhan', petaKeamanan: 'Peta Keamanan', sopCenter: 'SOP Center',
   awarenessCenter: 'Awareness Center', masterData: 'Master Data', administrasi: 'Administrasi Akun',
@@ -1425,7 +1425,7 @@ const REPORT_MODULE_CONFIG = {
   jurnal_pos: { title: 'Jurnal Pos & Mutasi Jaga', countFn: 'countJurnalPosLaporan', excelFn: 'exportJurnalPosLaporanExcel', pdfFn: 'exportJurnalPosLaporanPdf' },
   patroli: { title: 'Patroli QR & GPS', countFn: 'countPatroliLaporan', excelFn: 'exportPatroliLaporanExcel', pdfFn: 'exportPatroliLaporanPdf' },
   checklist_sarpras: { title: 'Checklist Sarpras', countFn: 'countChecklistSarprasLaporan', excelFn: 'exportChecklistSarprasLaporanExcel', pdfFn: 'exportChecklistSarprasLaporanPdf', dailyOnly: true },
-  izin_tamu: { title: 'Izin Tamu Masuk', countFn: 'countIzinTamuLaporan', excelFn: 'exportIzinTamuLaporanExcel', pdfFn: 'exportIzinTamuLaporanPdf' },
+  izin_tamu: { title: 'Izin Tamu Masuk A', countFn: 'countIzinTamuLaporan', excelFn: 'exportIzinTamuLaporanExcel', pdfFn: 'exportIzinTamuLaporanPdf' },
   incident: { title: 'Incident & Gangguan Keamanan', countFn: 'countIncidentLaporan', excelFn: 'exportIncidentLaporanExcel', pdfFn: 'exportIncidentLaporanPdf' },
   kendaraan: { title: 'Izin Kendaraan Masuk A', countFn: 'countKendaraanLaporan', excelFn: 'exportKendaraanLaporanExcel', pdfFn: 'exportKendaraanLaporanPdf' },
   barang_keluar: { title: 'Barang Keluar', countFn: 'countBarangKeluarLaporan', excelFn: 'exportBarangKeluarLaporanExcel', pdfFn: 'exportBarangKeluarLaporanPdf' }
@@ -2524,7 +2524,7 @@ function cetakRekapPatroli(id) {
 function loadIzinTamu() {
   ipgDfReset('tamu');
   const c = document.getElementById('app-container');
-  c.innerHTML = sectionHeader('Izin Tamu Masuk', 'Email otomatis ke SPS/TL Keamanan & Admin saat diajukan → Approval TL Keamanan (email ke pemohon) → Check-in/out oleh Satpam')
+  c.innerHTML = sectionHeader('Izin Tamu Masuk A', 'Email otomatis ke SPS/TL Keamanan & Admin saat diajukan → Approval TL Keamanan (email ke pemohon) → Check-in/out oleh Satpam')
     + `<div class="mb-3 d-flex justify-content-end gap-2 flex-wrap">
          <button class="btn btn-outline-ip" onclick="openUnduhLaporanModal('izin_tamu')"><i class="bi bi-file-earmark-arrow-down"></i> Unduh Laporan</button>
          <button class="btn btn-primary-ip" onclick="openIzinTamuForm()"><i class="bi bi-plus-lg"></i> Ajukan Izin Tamu</button>
