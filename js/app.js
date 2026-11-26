@@ -2989,10 +2989,15 @@ function renderBarangKeluarDashboard(rows) {
 }
 function barangKeluarActions(row) {
   let btns = '';
-  if (row.Status === 'Diajukan' && (['SPS_KEAMANAN','ADMIN'].includes(AppState.user.Role) || row.CreatedBy === AppState.user.Nama))
+  const bisaEdit = row.Status === 'Diajukan' && (AppState.user.Role === 'ADMIN' || row.CreatedBy === AppState.user.Nama);
+  if (row.Status === 'Diajukan')
+    btns += `<button class="btn btn-outline-ip btn-sm-ip" title="Pratinjau pengajuan" onclick="pratinjauBarangKeluar('${row.ID}')"><i class="bi bi-eye"></i></button> `;
+  if (bisaEdit)
+    btns += `<button class="btn btn-outline-ip btn-sm-ip" title="Edit pengajuan (sebelum disetujui)" onclick="openBarangKeluarForm('${row.ID}')"><i class="bi bi-pencil"></i></button> `;
+  else if (row.Status === 'Diajukan' && ['SPS_KEAMANAN','ADMIN'].includes(AppState.user.Role))
     btns += `<button class="btn btn-outline-ip btn-sm-ip" title="${row.FotoUrl ? 'Ganti foto barang' : 'Tambah foto barang'}" onclick="openFotoBKModal('${row.ID}')"><i class="bi bi-camera"></i></button> `;
   if (row.Status === 'Diajukan' && ROLE_APPROVAL_BK.includes(AppState.user.Role))
-    btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="approveBarangKeluar('${row.ID}')">Approve</button> `
+    btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="pratinjauBarangKeluar('${row.ID}')">Periksa &amp; Approve</button> `
           + `<button class="btn btn-outline-ip btn-sm-ip" onclick="openTolakModal('bk','${row.ID}','${row.NoSurat}')">Tolak</button> `;
   if (row.Status === 'Disetujui' && ['DANRU','ADMIN'].includes(AppState.user.Role))
     btns += `<button class="btn btn-primary-ip btn-sm-ip" onclick="callServer('konfirmasiKeluarDanru',['${row.ID}','${AppState.user.Nama}'],'Barang keluar dikonfirmasi',loadBarangKeluar)">Konfirmasi Keluar</button> `;
@@ -3002,33 +3007,39 @@ function barangKeluarActions(row) {
     btns += `<button class="btn btn-outline-ip btn-sm-ip" onclick="callServer('closeBarangKeluar',['${row.ID}','${AppState.user.Nama}'],'Pengajuan ditutup',loadBarangKeluar)">Close</button>`;
   return btns || '-';
 }
-function openBarangKeluarForm() {
-  openFormModal('Ajukan Barang Keluar (Surat Pas)', `
+let bkEditId = null;
+function openBarangKeluarForm(editId) {
+  const r = editId ? bkRowById(editId) : null;
+  bkEditId = r ? r.ID : null;
+  const v = k => r ? escHtmlIpg(r[k] == null ? '' : r[k]) : '';
+  openFormModal(r ? `Edit Pengajuan ${escHtmlIpg(r.NoSurat)}` : 'Ajukan Barang Keluar (Surat Pas)', `
+    ${r ? `<div class="small mb-2" style="background:var(--tint-yellow);border-radius:var(--radius-md);padding:.55rem .75rem;">
+      <i class="bi bi-pencil-square"></i> Edit hanya bisa selama pengajuan belum disetujui. No. surat tetap <b>${escHtmlIpg(r.NoSurat)}</b>.</div>` : ''}
     <form onsubmit="return submitBarangKeluarForm(event)">
       <div class="row g-2">
         <div class="col-12"><label class="form-label"><b>I. Yang Bertanda Tangan Dibawah Ini (SPS Bidang Pemohon)</b></label></div>
-        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="bkTanggal" value="${ipgToday()}" required></div>
-        <div class="col-6"><label class="form-label">Nama SPS Bidang</label><input type="text" class="form-control" id="bkPemohon" list="personelNamaOptions" value="${AppState.user.Nama}" required></div>
-        <div class="col-6"><label class="form-label">Jabatan</label><input type="text" class="form-control" id="bkJabatanPemohon"></div>
+        <div class="col-6"><label class="form-label">Tanggal</label><input type="date" class="form-control" id="bkTanggal" value="${r ? String(r.Tanggal || '').slice(0, 10) : ipgToday()}" required></div>
+        <div class="col-6"><label class="form-label">Nama SPS Bidang</label><input type="text" class="form-control" id="bkPemohon" list="personelNamaOptions" value="${r ? v('SPSBidangPemohon') : escHtmlIpg(AppState.user.Nama)}" required></div>
+        <div class="col-6"><label class="form-label">Jabatan</label><input type="text" class="form-control" id="bkJabatanPemohon" value="${v('JabatanPemohon')}"></div>
         <div class="col-6"><label class="form-label">Kategori</label>
-          <select class="form-select" id="bkKategori" onchange="toggleDiserahkanKepada()">${selectOptions(KATEGORI_BARANG_KELUAR)}</select></div>
-        <div class="col-12" id="bkDiserahkanWrap" style="display:none;"><label class="form-label">Diserahkan Kepada</label><input type="text" class="form-control" id="bkDiserahkanKepada"></div>
+          <select class="form-select" id="bkKategori" onchange="toggleDiserahkanKepada()">${selectOptions(KATEGORI_BARANG_KELUAR, r ? r.Kategori : undefined)}</select></div>
+        <div class="col-12" id="bkDiserahkanWrap" style="display:${r && r.Kategori === 'Diserahkan' ? 'block' : 'none'};"><label class="form-label">Diserahkan Kepada</label><input type="text" class="form-control" id="bkDiserahkanKepada" value="${v('DiserahkanKepada')}"></div>
 
         <div class="col-12 mt-3"><hr><label class="form-label"><b>II. Dilakukan Oleh (Pelaksana)</b></label></div>
-        <div class="col-6"><label class="form-label">Nama</label><input type="text" class="form-control" id="bkPelaksanaNama" list="personelNamaOptions" required></div>
-        <div class="col-6"><label class="form-label">No. Induk/KTP/SIM</label><input type="text" class="form-control" id="bkPelaksanaNoInduk"></div>
-        <div class="col-6"><label class="form-label">Jabatan Pekerjaan</label><input type="text" class="form-control" id="bkPelaksanaJabatan"></div>
-        <div class="col-6"><label class="form-label">Nama Perusahaan</label><input type="text" class="form-control" id="bkPelaksanaPerusahaan"></div>
-        <div class="col-6"><label class="form-label">No. Telepon Perusahaan</label><input type="text" class="form-control" id="bkPelaksanaTelepon"></div>
-        <div class="col-6"><label class="form-label">Alamat Perusahaan</label><input type="text" class="form-control" id="bkPelaksanaAlamat"></div>
+        <div class="col-6"><label class="form-label">Nama</label><input type="text" class="form-control" id="bkPelaksanaNama" list="personelNamaOptions" required value="${v('PelaksanaNama')}"></div>
+        <div class="col-6"><label class="form-label">No. Induk/KTP/SIM</label><input type="text" class="form-control" id="bkPelaksanaNoInduk" value="${v('PelaksanaNoInduk')}"></div>
+        <div class="col-6"><label class="form-label">Jabatan Pekerjaan</label><input type="text" class="form-control" id="bkPelaksanaJabatan" value="${v('PelaksanaJabatan')}"></div>
+        <div class="col-6"><label class="form-label">Nama Perusahaan</label><input type="text" class="form-control" id="bkPelaksanaPerusahaan" value="${v('PelaksanaPerusahaan')}"></div>
+        <div class="col-6"><label class="form-label">No. Telepon Perusahaan</label><input type="text" class="form-control" id="bkPelaksanaTelepon" value="${v('PelaksanaTelepon')}"></div>
+        <div class="col-6"><label class="form-label">Alamat Perusahaan</label><input type="text" class="form-control" id="bkPelaksanaAlamat" value="${v('PelaksanaAlamat')}"></div>
 
         <div class="col-12 mt-3"><hr><label class="form-label"><b>III. Data Pengemudi & Kendaraan</b></label></div>
-        <div class="col-6"><label class="form-label">Nama Pengemudi</label><input type="text" class="form-control" id="bkPengemudiNama"></div>
-        <div class="col-6"><label class="form-label">Alamat Rumah</label><input type="text" class="form-control" id="bkPengemudiAlamat"></div>
-        <div class="col-4"><label class="form-label">Jenis Kendaraan</label><input type="text" class="form-control" id="bkJenisKendaraan"></div>
-        <div class="col-4"><label class="form-label">Warna</label><input type="text" class="form-control" id="bkWarnaKendaraan"></div>
-        <div class="col-4"><label class="form-label">Nomor Polisi</label><input type="text" class="form-control" id="bkNomorPolisi"></div>
-        <div class="col-12"><label class="form-label">Tujuan</label><input type="text" class="form-control" id="bkTujuan"></div>
+        <div class="col-6"><label class="form-label">Nama Pengemudi</label><input type="text" class="form-control" id="bkPengemudiNama" value="${v('PengemudiNama')}"></div>
+        <div class="col-6"><label class="form-label">Alamat Rumah</label><input type="text" class="form-control" id="bkPengemudiAlamat" value="${v('PengemudiAlamatRumah')}"></div>
+        <div class="col-4"><label class="form-label">Jenis Kendaraan</label><input type="text" class="form-control" id="bkJenisKendaraan" value="${v('JenisKendaraan')}"></div>
+        <div class="col-4"><label class="form-label">Warna</label><input type="text" class="form-control" id="bkWarnaKendaraan" value="${v('WarnaKendaraan')}"></div>
+        <div class="col-4"><label class="form-label">Nomor Polisi</label><input type="text" class="form-control" id="bkNomorPolisi" value="${v('NomorPolisi')}"></div>
+        <div class="col-12"><label class="form-label">Tujuan</label><input type="text" class="form-control" id="bkTujuan" value="${v('Tujuan')}"></div>
       </div>
       <hr>
       <div class="d-flex justify-content-between align-items-center mb-2">
@@ -3040,28 +3051,30 @@ function openBarangKeluarForm() {
       <label class="form-label mb-1"><b>V. Lampiran Foto</b> <span class="text-muted small">(opsional, 1 foto)</span></label>
       <div class="small text-muted mb-2">Foto barang yang akan dikeluarkan, untuk diperiksa TL / SPS Keamanan sebelum approval.</div>
       <input type="file" accept="image/*" class="form-control" id="bkFotoInput" onchange="onBkFotoSelected(this, 'bkFotoStatus', 'bk')">
-      <div id="bkFotoStatus" class="mt-2"></div>
-      <button type="submit" class="btn btn-primary-ip w-100 mt-3">Ajukan (Terbit Nomor Surat Otomatis)</button>
+      <div id="bkFotoStatus" class="mt-2">${r && r.FotoUrl ? fotoBKPreviewHtml(r.FotoUrl, 'bk', 'bkFotoStatus') : ''}</div>
+      <button type="submit" class="btn btn-primary-ip w-100 mt-3">${r ? '<i class="bi bi-check2"></i> Simpan Perubahan' : 'Ajukan (Terbit Nomor Surat Otomatis)'}</button>
     </form>`);
-  bkFotoUrl = ''; bkFotoUploading = false;
+  bkFotoUrl = r ? (r.FotoUrl || '') : ''; bkFotoUploading = false;
   document.getElementById('bkItemsWrap').innerHTML = '';
-  addBarangItemRow(); addBarangItemRow();
+  let items = []; if (r) { try { items = JSON.parse(r.ItemsJSON || '[]'); } catch (e) {} }
+  if (items.length) items.forEach(it => addBarangItemRow(it)); else { addBarangItemRow(); addBarangItemRow(); }
 }
 function toggleDiserahkanKepada() {
   document.getElementById('bkDiserahkanWrap').style.display = val('bkKategori') === 'Diserahkan' ? 'block' : 'none';
 }
-function addBarangItemRow() {
+function addBarangItemRow(it) {
+  const e = k => it ? escHtmlIpg(it[k] == null ? '' : it[k]) : '';
   const wrap = document.getElementById('bkItemsWrap');
   const div = document.createElement('div');
   div.className = 'row g-2 mb-2 align-items-end bk-item-row';
   div.innerHTML = `
-    <div class="col-4"><label class="form-label small">Nama Barang</label><input type="text" class="form-control form-control-sm bk-nama" required></div>
-    <div class="col-2"><label class="form-label small">Jumlah</label><input type="text" inputmode="decimal" class="form-control form-control-sm bk-jumlah" placeholder="cth. 1 atau 2,5" value="1"></div>
+    <div class="col-4"><label class="form-label small">Nama Barang</label><input type="text" class="form-control form-control-sm bk-nama" required value="${e('namaBarang')}"></div>
+    <div class="col-2"><label class="form-label small">Jumlah</label><input type="text" inputmode="decimal" class="form-control form-control-sm bk-jumlah" placeholder="cth. 1 atau 2,5" value="${it ? e('jumlah') : '1'}"></div>
     <div class="col-2"><label class="form-label small">Satuan</label>
-      <input type="text" class="form-control form-control-sm bk-satuan" list="satuanOptions" placeholder="pcs">
+      <input type="text" class="form-control form-control-sm bk-satuan" list="satuanOptions" placeholder="pcs" value="${e('satuan')}">
       <datalist id="satuanOptions"><option value="Pcs"><option value="Set"><option value="Unit"><option value="Lot"></datalist>
     </div>
-    <div class="col-3"><label class="form-label small">Keterangan</label><input type="text" class="form-control form-control-sm bk-ket"></div>
+    <div class="col-3"><label class="form-label small">Keterangan</label><input type="text" class="form-control form-control-sm bk-ket" value="${e('keterangan')}"></div>
     <div class="col-1"><button type="button" class="btn btn-outline-ip btn-sm-ip" onclick="this.closest('.bk-item-row').remove()"><i class="bi bi-trash"></i></button></div>`;
   wrap.appendChild(div);
 }
@@ -3085,6 +3098,7 @@ function submitBarangKeluarForm(evt) {
     items, createdBy: AppState.user.Nama, fotoUrl: bkFotoUrl };
   if (bkFotoUploading) { showToast('Tunggu', 'Foto masih diunggah, coba lagi sebentar.', 'danger'); return false; }
   closeFormModal();
+  if (bkEditId) { const id = bkEditId; bkEditId = null; callServer('ubahBarangKeluar', [id, payload], null, loadBarangKeluar, 'Menyimpan perubahan...'); return false; }
   callServer('ajukanBarangKeluar', [payload], null, loadBarangKeluar, 'Menerbitkan nomor surat...');
   return false;
 }
@@ -3248,7 +3262,7 @@ function openPrintDocument(bodyHtml, existingWin) {
   w.document.close();
 }
 
-function cetakSuratBarang(noSurat) {
+function cetakSuratBarang(noSurat, draf) {
   google.script.run.withSuccessHandler(res => {
     if (!res.success) { showToast('Gagal', res.message, 'danger'); return; }
     const r = res.data;
@@ -3309,7 +3323,10 @@ function cetakSuratBarang(noSurat) {
         ${r.FotoUrl ? `<div style="text-align:center;">${ipgFotoCetak(r.FotoUrl)}</div>`
                     : '<div style="font-size:11px;color:#888;">Tidak ada foto dilampirkan.</div>'}
       </div>`);
-    openPrintDocument(body);
+    const tandaDraf = (draf || r.Status === 'Diajukan') ? `<div style="border:2px dashed #E53935;color:#C62828;text-align:center;font-weight:800;font-size:13px;padding:6px;margin-bottom:10px;letter-spacing:.5px;">
+        PRATINJAU — BELUM DISETUJUI. TIDAK BERLAKU SEBAGAI SURAT PAS.</div>
+      <div style="position:fixed;top:42%;left:0;right:0;text-align:center;font-size:90px;font-weight:900;color:rgba(229,57,53,.10);transform:rotate(-28deg);pointer-events:none;z-index:0;">DRAF</div>` : '';
+    openPrintDocument(tandaDraf + body);
   }).withFailureHandler(e=>showToast('Error',e.message,'danger')).findBarangKeluarByNoSurat(noSurat);
 }
 
@@ -5441,9 +5458,43 @@ function lihatFotoBK(id) {
     <div class="text-center mt-2"><a href="${escHtmlIpg(ipgDriveImg(r.FotoUrl))}" target="_blank" rel="noopener" class="small"><i class="bi bi-box-arrow-up-right"></i> Buka ukuran penuh</a></div>`);
 }
 /** Approve SPS: konfirmasi dulu bila pengajuan tanpa foto (foto tetap opsional) */
+/** Pratinjau isi pengajuan di aplikasi — diperiksa sebelum approve (TL/SPS Keamanan) atau dicek ulang pemohon */
+function pratinjauBarangKeluar(id) {
+  const r = bkRowById(id);
+  if (!r) return;
+  let items = []; try { items = JSON.parse(r.ItemsJSON || '[]'); } catch (e) {}
+  const e = x => escHtmlIpg(x == null || x === '' ? '-' : x);
+  const baris = (l, x) => `<tr><td class="text-muted" style="width:38%;">${l}</td><td>${e(x)}</td></tr>`;
+  const blok = (judul, isi) => `<div class="fw-bold small mt-3 mb-1">${judul}</div><div class="table-responsive-ip"><table class="table-ip"><tbody>${isi}</tbody></table></div>`;
+  const approver = ROLE_APPROVAL_BK.includes(AppState.user.Role);
+  const bisaEdit = AppState.user.Role === 'ADMIN' || r.CreatedBy === AppState.user.Nama;
+  openFormModal(`Pratinjau Pengajuan ${e(r.NoSurat)}`, `
+    <div class="d-flex flex-wrap gap-2 align-items-center small mb-1">${statusPill(r.Status)}
+      <span>Tanggal <b>${e(fmtTanggalIndo(r.Tanggal))}</b></span><span>· Kategori <b>${e(r.Kategori)}</b>${r.Kategori === 'Diserahkan' && r.DiserahkanKepada ? ' kepada ' + e(r.DiserahkanKepada) : ''}</span></div>
+    ${r.WaktuDiubah ? `<div class="small text-muted"><i class="bi bi-pencil-square"></i> Terakhir diedit ${e(r.DiubahOleh)} · ${e(String(r.WaktuDiubah).slice(0, 16))}</div>` : ''}
+    ${blok('I. SPS Bidang Pemohon', baris('Nama', r.SPSBidangPemohon) + baris('Jabatan', r.JabatanPemohon))}
+    ${blok('II. Dilakukan Oleh', baris('Nama', r.PelaksanaNama) + baris('No. Induk/KTP/SIM', r.PelaksanaNoInduk) + baris('Jabatan Pekerjaan', r.PelaksanaJabatan)
+        + baris('Perusahaan', r.PelaksanaPerusahaan) + baris('Telepon', r.PelaksanaTelepon) + baris('Alamat', r.PelaksanaAlamat))}
+    ${blok('III. Pengemudi & Kendaraan', baris('Pengemudi', r.PengemudiNama) + baris('Alamat Rumah', r.PengemudiAlamatRumah)
+        + baris('Kendaraan', [r.JenisKendaraan, r.WarnaKendaraan].filter(Boolean).join(' · ')) + baris('Nomor Polisi', r.NomorPolisi) + baris('Tujuan', r.Tujuan))}
+    <div class="fw-bold small mt-3 mb-1">IV. Daftar Barang (${items.length})</div>
+    <div class="table-responsive-ip"><table class="table-ip"><thead><tr><th>No</th><th>Nama Barang</th><th>Jumlah</th><th>Satuan</th><th>Keterangan</th></tr></thead>
+      <tbody>${items.length ? items.map((it, i) => `<tr><td>${i + 1}</td><td>${e(it.namaBarang)}</td><td>${e(it.jumlah)}</td><td>${e(it.satuan)}</td><td>${e(it.keterangan)}</td></tr>`).join('')
+        : '<tr><td colspan="5" class="text-muted text-center">Tidak ada barang.</td></tr>'}</tbody></table></div>
+    <div class="fw-bold small mt-3 mb-1">V. Lampiran Foto</div>
+    ${r.FotoUrl ? `<div class="text-center"><img src="${escHtmlIpg(ipgDriveImg(r.FotoUrl))}" referrerpolicy="no-referrer" style="max-width:100%;max-height:300px;border-radius:8px;border:1px solid var(--border-subtle);"
+        onerror="this.outerHTML='<div class=&quot;text-muted small&quot;>Foto tidak dapat dimuat.</div>'"></div>`
+      : '<div class="small text-warning"><i class="bi bi-exclamation-triangle"></i> Tidak ada foto barang dilampirkan.</div>'}
+    <div class="d-flex flex-wrap justify-content-end gap-2 mt-3">
+      <button class="btn btn-outline-ip" onclick="cetakSuratBarang('${escHtmlIpg(r.NoSurat)}', true)"><i class="bi bi-printer"></i> Pratinjau Cetak</button>
+      ${r.Status === 'Diajukan' && bisaEdit ? `<button class="btn btn-outline-ip" onclick="closeFormModal();openBarangKeluarForm('${r.ID}')"><i class="bi bi-pencil"></i> Edit</button>` : ''}
+      ${r.Status === 'Diajukan' && approver ? `<button class="btn btn-outline-ip" onclick="closeFormModal();openTolakModal('bk','${r.ID}','${escHtmlIpg(r.NoSurat)}')">Tolak</button>
+        <button class="btn btn-primary-ip" onclick="closeFormModal();approveBarangKeluar('${r.ID}')"><i class="bi bi-check2-circle"></i> Approve</button>` : ''}
+    </div>`);
+}
 function approveBarangKeluar(id) {
   const r = bkRowById(id);
-  const kirim = () => callServer('approveSPSBarangKeluar', [id, AppState.user.Nama], null, loadBarangKeluar, 'Menyetujui & mengirim email...');
+  const kirim = () => callServer('approveSPSBarangKeluar', [id, AppState.user.Nama, r ? String(r.WaktuDiubah || '') : ''], null, loadBarangKeluar, 'Menyetujui & mengirim email...');
   if (r && !r.FotoUrl) openConfirmModal(`Pengajuan ${r.NoSurat} tidak melampirkan foto barang.\n\nTetap setujui?`, kirim);
   else kirim();
 }
