@@ -870,9 +870,9 @@ function renderDashboard(res) {
       <div><h3>Dashboard Operasional Pengamanan</h3><div class="section-sub">PT PLN Indonesia Power UBP Grati — Real-time Monitoring Sistem Manajemen Pengamanan</div></div>
     </div>
     <div class="row g-3 mb-3">
-      ${statCard('bi-exclamation-triangle-fill', '#E53935', d.incidentBulanIni, 'Incident Bulan Ini')}
-      ${statCard('bi-box-arrow-up-right', '#0C7A94', d.barangKeluarHariIni, 'Barang Keluar Hari Ini')}
-      ${statCard(SHIFT_AKTIF_ICON[shiftAktifNow], SHIFT_AKTIF_COLOR[shiftAktifNow], `Regu ${reguAktifNow}`, `Shift ${shiftAktifNow} Aktif`)}
+      ${statCard('bi-exclamation-triangle-fill', '#E53935', d.incidentBulanIni, 'Incident Bulan Ini', 'incident')}
+      ${statCard('bi-box-arrow-up-right', '#0C7A94', d.barangKeluarHariIni, 'Barang Keluar Hari Ini', 'barangKeluar')}
+      ${statCard(SHIFT_AKTIF_ICON[shiftAktifNow], SHIFT_AKTIF_COLOR[shiftAktifNow], `Regu ${reguAktifNow}`, `Shift ${shiftAktifNow} Aktif`, 'mutasiJaga')}
       <div class="col-6 col-lg-3"><div class="stat-card" style="cursor:pointer;" onclick="openStatusKeamananDrilldown()">
         <div class="stat-icon" style="background:${STATUS_KEAMANAN_COLOR[d.statusKeamanan.level]}"><i class="bi ${STATUS_KEAMANAN_ICON[d.statusKeamanan.level]}"></i></div>
         <div><div class="stat-value">${d.statusKeamanan.label}</div><div class="stat-label">Status Keamanan Hari Ini</div></div>
@@ -880,21 +880,21 @@ function renderDashboard(res) {
     </div>
     <div class="card-ip mb-3">
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-        <h6 class="mb-0"><i class="bi bi-geo-alt"></i> Status Pengisian Jurnal Pos Hari Ini <span id="posComplianceShiftBadge" class="badge-prd"></span></h6>
+        <h6 class="mb-0" role="button" style="cursor:pointer;" onclick="dashBuka('mutasiJaga')"><i class="bi bi-geo-alt"></i> Status Pengisian Jurnal Pos Hari Ini <span id="posComplianceShiftBadge" class="badge-prd"></span> <i class="bi bi-chevron-right small text-muted"></i></h6>
         <button class="btn btn-outline-ip btn-sm-ip" onclick="loadPosCompliance()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
       </div>
       <div id="posComplianceGrid" class="row g-2"><div class="text-center text-muted py-3">Memuat status pos...</div></div>
     </div>
     <div class="card-ip mb-3">
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-        <h6 class="mb-0"><i class="bi bi-shield-check"></i> Kepatuhan Patroli Hari Ini <span id="patroliComplianceShiftBadge" class="badge-prd"></span></h6>
+        <h6 class="mb-0" role="button" style="cursor:pointer;" onclick="dashBuka('patroli')"><i class="bi bi-shield-check"></i> Kepatuhan Patroli Hari Ini <span id="patroliComplianceShiftBadge" class="badge-prd"></span> <i class="bi bi-chevron-right small text-muted"></i></h6>
         <button class="btn btn-outline-ip btn-sm-ip" onclick="loadPatroliCompliance()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
       </div>
       <div id="patroliComplianceGrid"><div class="text-center text-muted py-3">Memuat status patroli...</div></div>
     </div>
     <div class="card-ip mb-3">
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-        <h6 class="mb-0"><i class="bi bi-clipboard-check"></i> Checklist Sarpras Hari Ini</h6>
+        <h6 class="mb-0" role="button" style="cursor:pointer;" onclick="dashBuka('checklistSarpras')"><i class="bi bi-clipboard-check"></i> Checklist Sarpras Hari Ini <i class="bi bi-chevron-right small text-muted"></i></h6>
         <button class="btn btn-outline-ip btn-sm-ip" onclick="loadChecklistSarprasDashboard()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
       </div>
       <div id="checklistSarprasDashboardGrid"><div class="text-center text-muted py-3">Memuat status checklist...</div></div>
@@ -914,7 +914,7 @@ function renderDashboard(res) {
           <canvas id="chartIncidentBulanan" height="110"></canvas>
         </div>
       </div>
-      <div class="col-lg-4">
+      <div class="col-lg-4 ipg-hp-sembunyi">
         <div class="card-ip" style="background:var(--accent-tint-bg); color:var(--text-dark);">
           <h6 style="color:var(--primary);"><i class="bi bi-lightbulb"></i> Ringkasan Operasional</h6>
           <ul style="padding-left:1.1rem; font-size:.85rem; color:var(--text-dark);">
@@ -923,11 +923,11 @@ function renderDashboard(res) {
           </ul>
         </div>
       </div>
-      <div class="col-lg-4" id="petaDashboardCol">
+      <div class="col-lg-4 ipg-hp-sembunyi" id="petaDashboardCol">
         <div class="card-ip"><div class="text-center text-muted small py-5"><span class="spinner-border spinner-border-sm"></span></div></div>
       </div>
     </div>
-    <div class="row g-3 mt-1">
+    <div class="row g-3 mt-1 ipg-hp-sembunyi">
       <div class="col-lg-4">
         <div class="card-ip">
           <h6 class="mb-3 text-uppercase" style="font-size:.8rem;letter-spacing:.03em;">Notifikasi</h6>
@@ -945,8 +945,34 @@ function renderDashboard(res) {
   loadPosCompliance();
   loadPatroliCompliance();
   loadChecklistSarprasDashboard();
-  loadDashboardWidgets();
-  loadNotifikasiApproval();
+  // HP: peta, Awareness & SOP disembunyikan — datanya tidak dimuat agar Dashboard lebih ringan
+  if (!ipgLayarHp()) loadDashboardWidgets(); else ipgPantauLayarLebar();
+  loadNotifikasiApproval(); // tetap dimuat untuk angka lonceng notifikasi
+}
+/** Lebar layar HP (di bawah breakpoint md Bootstrap) */
+function ipgLayarHp() { try { return window.matchMedia('(max-width: 767.98px)').matches; } catch (e) { return false; } }
+(function () { // CSS: bagian Dashboard yang disembunyikan di HP
+  const st = document.createElement('style');
+  st.textContent = '@media (max-width: 767.98px){.ipg-hp-sembunyi{display:none!important;}}';
+  document.head.appendChild(st);
+})();
+/** HP diputar / jendela dilebarkan → muat widget yang tadi dilewati */
+let ipgPantauLebarAktif = false;
+function ipgPantauLayarLebar() {
+  if (ipgPantauLebarAktif) return;
+  ipgPantauLebarAktif = true;
+  try {
+    window.matchMedia('(max-width: 767.98px)').addEventListener('change', ev => {
+      const peta = document.getElementById('petaDashboardCol');
+      if (!ev.matches && peta && peta.querySelector('.spinner-border')) loadDashboardWidgets();
+    });
+  } catch (e) {}
+}
+/** Klik kartu Dashboard → buka modul terkait (bila role punya akses) */
+function dashBuka(menuId) {
+  const item = MENU.flatMap(g => g.items).find(i => i.id === menuId);
+  if (item && !canAccess(item)) { showToast('Info', 'Anda tidak memiliki akses ke menu ' + item.label + '.', 'danger'); return; }
+  navigateTo(menuId);
 }
 function loadDashboardWidgets() {
   google.script.run.withSuccessHandler(res => {
@@ -1073,8 +1099,9 @@ function loadPosCompliance() {
     }).join('');
   }).withFailureHandler(e=>{ document.getElementById('posComplianceGrid').innerHTML = `<div class="text-danger small">${e.message}</div>`; }).getPosJagaCompliance();
 }
-function statCard(icon, color, value, label) {
-  return `<div class="col-6 col-lg-3"><div class="stat-card">
+function statCard(icon, color, value, label, keMenu) {
+  const klik = keMenu ? ` role="button" style="cursor:pointer;" onclick="dashBuka('${keMenu}')" title="Buka ${label}"` : '';
+  return `<div class="col-6 col-lg-3"><div class="stat-card"${klik}>
     <div class="stat-icon" style="background:${color}">${`<i class="bi ${icon}"></i>`}</div>
     <div><div class="stat-value">${value}</div><div class="stat-label">${label}</div></div>
   </div></div>`;
